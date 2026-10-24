@@ -9,8 +9,10 @@ jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: cachix/install-nix-action@v31
-      # Evaluates the whole laptop config, so option typos and syntax errors
-      # show up here before the laptop tries to build them.
       - run: nix flake check --show-trace
+      # Evaluates the whole laptop system (flake check alone stops short of
+      # that), so option typos and failed assertions show up here before the
+      # laptop tries to build them.
+      - run: nix eval --raw --show-trace .#nixosConfigurations.laptop.config.system.build.toplevel.drvPath

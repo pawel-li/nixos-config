@@ -14,10 +14,11 @@ jobs:
   update:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: cachix/install-nix-action@v31
       - run: nix flake update
       - run: nix flake check --show-trace
+      - run: nix eval --raw --show-trace .#nixosConfigurations.laptop.config.system.build.toplevel.drvPath
       - name: Commit flake.lock if it changed
         run: |
           git add flake.lock
