@@ -1,7 +1,8 @@
 name: update flake.lock
 
-# Moves nixpkgs to the latest nixos-26.05 commit once a week. The laptop picks
-# the new commit up like any other push, so it gets security updates on its own.
+# Moves nixpkgs to the latest nixos-26.05 commit (and nixpkgs-unstable, used
+# only for Immich, to the latest unstable) once a week. The laptop picks the new
+# commit up like any other push, so it gets security updates on its own.
 on:
   schedule:
     - cron: "0 4 * * 1" # Mondays 04:00 UTC

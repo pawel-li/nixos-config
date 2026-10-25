@@ -1,7 +1,7 @@
 # nixos-config
 
 NixOS configuration for my laptop (GNOME, NixOS 26.05) that also serves Glance,
-Jellyfin, Navidrome and Paperless-ngx to the home network. The laptop follows
+Immich, Jellyfin, Navidrome and Paperless-ngx to the home network. The laptop follows
 the `main` branch: push a change here and the laptop applies it on its own
 within about 5 minutes.
 
@@ -58,17 +58,22 @@ Open them from any device on the home network (phone, Mac, the laptop itself):
 | Service | Address | What for | First time |
 | ------- | ------- | -------- | ---------- |
 | Glance | <http://laptop.local:8080> | start page: links to the others and shows if they're up | nothing to do |
+| Immich | <http://laptop.local:2283> | photos and videos, backed up from the phone | the page asks you to create the admin account; then install the Immich app on the phone and sign in with server `http://laptop.local:2283` |
 | Jellyfin | <http://laptop.local:8096> | films, series, music | the page walks you through creating the admin account; add `/home/pawel/Videos` and `/home/pawel/Music` as libraries |
 | Navidrome | <http://laptop.local:4533> | music | the page asks you to create the admin account |
 | Paperless-ngx | <http://laptop.local:28981> | scanned documents and PDFs, searchable (Polish and English text) | on the laptop run `sudo paperless-manage createsuperuser` once and pick a username and password |
 
-Do the first-time steps right away: until Jellyfin and Navidrome have an admin
-account, anyone on the network who opens the page can create it.
+Do the first-time steps right away: until Immich, Jellyfin and Navidrome have an
+admin account, anyone on the network who opens the page can create it.
 
 - **Music and videos:** copy them into `~/Music` and `~/Videos`. Navidrome and
   Jellyfin see only those two folders, read-only. Navidrome picks up new files
   within seconds; Jellyfin on its next library scan (or "Scan All Libraries"
   in its dashboard).
+- **Photos:** the Immich app on the phone backs photos up to
+  `/var/lib/immich`. To show the ones already in `~/Pictures` as well, add
+  `/home/pawel/Pictures` in Immich under Administration → External Libraries;
+  Immich sees only that folder, read-only.
 - **Documents:** drag files onto the Paperless page, or use a Paperless app on
   the phone. Its files live in `/var/lib/paperless`.
 - **A device can't open `laptop.local`** (some Android browsers): use the
@@ -123,9 +128,12 @@ on its own.
 ## Updates
 
 `update-lock.yml` runs every Monday, moves nixpkgs to the newest
-`nixos-26.05` commit and pushes `flake.lock`, so the laptop gets security fixes
-without you doing anything. Run it by hand from the Actions tab any time.
+`nixos-26.05` commit (and Immich to the newest in NixOS unstable) and pushes
+`flake.lock`, so the laptop gets security fixes without you doing anything. Run it by hand from the Actions tab any time.
 
 When a new NixOS release is out (26.11 in late November), change
 `nixos-26.05` in `flake.nix`, push, and the laptop
-upgrades. Leave `system.stateVersion` as it is.
+upgrades. Leave `system.stateVersion` as it is. With 26.11, also delete the
+`nixpkgs-unstable` input and the `services.immich.package` line in
+`flake.nix`: Immich only comes from unstable because 26.05's version has known
+security holes.

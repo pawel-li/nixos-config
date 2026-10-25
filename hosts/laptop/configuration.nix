@@ -124,6 +124,12 @@
                   # url is the link; check-url is what Glance itself polls.
                   sites = [
                     {
+                      title = "Immich";
+                      url = "http://laptop.local:2283";
+                      check-url = "http://127.0.0.1:2283/api/server/ping";
+                      icon = "di:immich";
+                    }
+                    {
                       title = "Jellyfin";
                       url = "http://laptop.local:8096";
                       check-url = "http://127.0.0.1:8096/health";
@@ -151,6 +157,23 @@
     };
   };
 
+  # Immich: photos and videos, http://laptop.local:2283. The first visit asks
+  # you to create the admin account; then install the Immich app on your phone
+  # to back its photos up here (they're kept in /var/lib/immich). To include
+  # the photos already in ~/Pictures, add /home/pawel/Pictures under
+  # Administration → External Libraries. Immich sees that folder read-only and
+  # nothing else in your home folder. (Immich itself comes from NixOS unstable
+  # for now; see flake.nix.)
+  services.immich = {
+    enable = true;
+    host = "::"; # every address, IPv4 and IPv6
+    openFirewall = true;
+  };
+  systemd.services.immich-server.serviceConfig = {
+    ProtectHome = lib.mkForce "tmpfs";
+    BindReadOnlyPaths = [ "/home/pawel/Pictures" ];
+  };
+
   # Jellyfin: films, series and music, http://laptop.local:8096. The first visit
   # walks you through creating the admin account and adding ~/Videos and
   # ~/Music as libraries. Like Navidrome below, it runs as pawel and sees only
@@ -168,13 +191,16 @@
       "/home/pawel/Music"
     ];
   };
-  # Creates ~/Videos if it's missing, so Jellyfin can start. (Navidrome's
-  # module does the same for ~/Music.)
-  systemd.tmpfiles.settings.jellyfinMedia."/home/pawel/Videos".d = {
-    mode = ":755";
-    user = ":pawel";
-    group = ":users";
-  };
+  # Creates ~/Videos and ~/Pictures if they're missing, so Jellyfin and Immich
+  # can start. (Navidrome's module does the same for ~/Music.)
+  systemd.tmpfiles.settings.mediaFolders =
+    lib.genAttrs [ "/home/pawel/Videos" "/home/pawel/Pictures" ] (_: {
+      d = {
+        mode = ":755";
+        user = ":pawel";
+        group = ":users";
+      };
+    });
 
   # Paperless-ngx: scanned documents and PDFs, searchable, at
   # http://laptop.local:28981. Create your login once with
