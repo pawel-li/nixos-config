@@ -1,12 +1,13 @@
 # nixos-config
 
-NixOS configuration for my laptop (GNOME, Navidrome, NixOS 26.05). The laptop
-follows the `main` branch: push a change here and the laptop applies it on its
-own within about 5 minutes.
+NixOS configuration for my laptop (GNOME, NixOS 26.05) that also serves Glance,
+Jellyfin, Navidrome and Paperless-ngx to the home network. The laptop follows
+the `main` branch: push a change here and the laptop applies it on its own
+within about 5 minutes.
 
 ```
 flake.nix                      entry point: nixosConfigurations.laptop
-hosts/laptop/configuration.nix everything about the laptop: desktop, user, packages, Navidrome
+hosts/laptop/configuration.nix everything about the laptop: desktop, user, packages, services
 hosts/laptop/hardware-configuration.nix   disks and drivers, generated on the laptop
 modules/git-deploy.nix         the timer that pulls new commits and switches to them
 scripts/bootstrap.sh           moves an installed laptop onto this repo (safe to re-run)
@@ -50,22 +51,37 @@ stopped halfway, just run it again: it picks up where it stopped.
    hardware config to this repo, and switches the system to the flake.
    Reboot when it says Done.
 
-## Music (Navidrome)
+## Services
 
-Copy music into `~/Music` and open <http://laptop.local:4533> from any device
-on the same network (phone, Mac), or <http://localhost:4533> on the laptop.
-Create the admin account on the first visit, right away: until then anyone on
-the network who opens the page can create it. New files show up on their own,
-usually within seconds; no rescan needed.
+Open them from any device on the home network (phone, Mac, the laptop itself):
 
-## Services on the network
+| Service | Address | What for | First time |
+| ------- | ------- | -------- | ---------- |
+| Glance | <http://laptop.local:8080> | start page: links to the others and shows if they're up | nothing to do |
+| Jellyfin | <http://laptop.local:8096> | films, series, music | the page walks you through creating the admin account; add `/home/pawel/Videos` and `/home/pawel/Music` as libraries |
+| Navidrome | <http://laptop.local:4533> | music | the page asks you to create the admin account |
+| Paperless-ngx | <http://laptop.local:28981> | scanned documents and PDFs, searchable (Polish and English text) | on the laptop run `sudo paperless-manage createsuperuser` once and pick a username and password |
+
+Do the first-time steps right away: until Jellyfin and Navidrome have an admin
+account, anyone on the network who opens the page can create it.
+
+- **Music and videos:** copy them into `~/Music` and `~/Videos`. Navidrome and
+  Jellyfin see only those two folders, read-only. Navidrome picks up new files
+  within seconds; Jellyfin on its next library scan (or "Scan All Libraries"
+  in its dashboard).
+- **Documents:** drag files onto the Paperless page, or use a Paperless app on
+  the phone. Its files live in `/var/lib/paperless`.
+- **A device can't open `laptop.local`** (some Android browsers): use the
+  laptop's IP address instead, from GNOME Settings → Wi-Fi → the gear icon
+  next to your network.
+
+### Adding a service
 
 Every service in `hosts/laptop/configuration.nix` is meant for the whole home
-network. Other devices find the laptop as `laptop.local`. When you add a
-service, make it listen on every address and open its port (most NixOS
-services have `openFirewall = true;` for that). Anything not opened that way
-stays blocked by the firewall. The ports are open on every network the laptop
-joins, so log-ins matter.
+network. When you add one, make it listen on every address and open its port
+(most NixOS services have `openFirewall = true;` for that), then add it to the
+Glance page. Anything not opened that way stays blocked by the firewall. The
+ports are open on every network the laptop joins, so log-ins matter.
 
 ## Day-to-day
 
