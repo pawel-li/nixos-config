@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
-# One-time setup on the freshly installed laptop. Run it from the installed
-# NixOS desktop (not the USB installer), connected to the internet:
+# Moves an installed NixOS laptop onto the latest version of this repo. Run it
+# from the installed NixOS desktop (not the USB installer), connected to the
+# internet:
 #
 #   nix-shell -p git gh curl --run 'bash <(curl -fsSL https://raw.githubusercontent.com/pawel-li/nixos-config/main/scripts/bootstrap.sh)'
 #
 # It saves this laptop's hardware config to the repo, pushes it, and switches
 # the system to the flake. After that the laptop follows GitHub on its own.
+# Running it again is safe: it picks up where an earlier run stopped.
 set -euo pipefail
 
 REPO=pawel-li/nixos-config
@@ -32,7 +34,8 @@ gh auth setup-git
 
 say "Getting $REPO into $DIR"
 if [ -d "$DIR/.git" ]; then
-  git -C "$DIR" pull --ff-only
+  # Keeps a commit an earlier run made but couldn't push, on top of what's new.
+  git -C "$DIR" pull --rebase --autostash
 else
   git clone "https://github.com/$REPO" "$DIR"
 fi
@@ -84,11 +87,14 @@ nixos-rebuild build --flake ".#$HOST"
 rm -f result
 
 if git diff --cached --quiet; then
-  echo "The repo already has this laptop's hardware config."
+  echo "The hardware config is already committed."
 else
   git commit -m "laptop: add hardware configuration"
+fi
+if [ "$(git rev-list --count '@{upstream}..HEAD')" -gt 0 ]; then
   say "Pushing to GitHub"
-  git push
+  git push ||
+    die "couldn't push to $REPO. Sign in as the GitHub account that owns it (gh auth login), then run this again."
 fi
 
 rev=$(git rev-parse HEAD)
@@ -102,6 +108,8 @@ Push a change and it is applied here within about 5 minutes.
 
   Watch updates:   journalctl -fu nixos-git-deploy
   Check right now: sudo systemctl start nixos-git-deploy
+
+Music: put files in ~/Music and open http://localhost:4533 (Navidrome).
 
 Reboot once now so the new hostname and everything else start fresh.
 EOF

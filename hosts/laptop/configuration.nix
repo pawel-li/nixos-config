@@ -58,6 +58,19 @@
   };
   nix.optimise.automatic = true;
 
+  # Navidrome music server. Put music in ~/Music, then open http://localhost:4533
+  # (the first visit asks you to create the admin account). It runs as pawel so
+  # it can read whatever you copy there, and it sees only that folder, read-only.
+  services.navidrome = {
+    enable = true;
+    user = "pawel";
+    group = "users";
+    settings.MusicFolder = "/home/pawel/Music";
+  };
+  # The module hides all of /home from Navidrome. "tmpfs" hides it too, but lets
+  # the ~/Music folder above show through.
+  systemd.services.navidrome.serviceConfig.ProtectHome = lib.mkForce "tmpfs";
+
   programs.firefox.enable = true;
   environment.systemPackages = with pkgs; [
     curl

@@ -1,17 +1,32 @@
 # nixos-config
 
-NixOS configuration for my laptop (GNOME, NixOS 26.05). The laptop follows the
-`main` branch: push a change here and the laptop applies it on its own within
-about 5 minutes.
+NixOS configuration for my laptop (GNOME, Navidrome, NixOS 26.05). The laptop
+follows the `main` branch: push a change here and the laptop applies it on its
+own within about 5 minutes.
 
 ```
 flake.nix                      entry point: nixosConfigurations.laptop
-hosts/laptop/configuration.nix everything about the laptop: desktop, user, packages
+hosts/laptop/configuration.nix everything about the laptop: desktop, user, packages, Navidrome
 hosts/laptop/hardware-configuration.nix   disks and drivers, generated on the laptop
 modules/git-deploy.nix         the timer that pulls new commits and switches to them
-scripts/bootstrap.sh           one-time setup after installing
+scripts/bootstrap.sh           moves an installed laptop onto this repo (safe to re-run)
 .github/workflows/             checks every push; bumps nixpkgs weekly
 ```
+
+## Laptop already has NixOS? Move it to the latest version
+
+Whether it has a fresh install from the USB or an earlier try of this setup,
+log in as `pawel`, connect to the internet, open a terminal and run:
+
+```bash
+nix-shell -p git gh curl --run 'bash <(curl -fsSL https://raw.githubusercontent.com/pawel-li/nixos-config/main/scripts/bootstrap.sh)'
+```
+
+It asks you to sign in to GitHub in the browser (use the account that owns
+this repo), saves the laptop's hardware config here and switches the laptop to
+the latest `main`. Reboot when it says Done. From then on the laptop updates
+itself from GitHub and you don't need this command again. If an earlier run
+stopped halfway, just run it again: it picks up where it stopped.
 
 ## Installing on the laptop
 
@@ -34,6 +49,19 @@ scripts/bootstrap.sh           one-time setup after installing
    It asks you to sign in to GitHub in the browser, saves the laptop's
    hardware config to this repo, and switches the system to the flake.
    Reboot when it says Done.
+
+## Music (Navidrome)
+
+Copy music into `~/Music` and open <http://localhost:4533>. The first visit
+asks you to create the admin account. New files show up on their own, usually
+within seconds; no rescan needed.
+
+It listens only on the laptop itself. To reach it from a phone on your home
+Wi-Fi, add `settings.Address = "0.0.0.0";` and `openFirewall = true;` to
+`services.navidrome` in `hosts/laptop/configuration.nix`. Do that only after
+creating the admin account, because until then anyone who opens the page can
+create it. It also makes the login page reachable on every network the laptop
+joins, cafés included.
 
 ## Day-to-day
 
