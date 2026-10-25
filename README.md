@@ -57,7 +57,7 @@ Open them from any device on the home network (phone, Mac, the laptop itself):
 
 | Service | Address | What for | First time |
 | ------- | ------- | -------- | ---------- |
-| Glance | <http://laptop.local:8080> | start page: links to the others and shows if they're up | nothing to do |
+| Glance | <http://laptop.local> (or `:8080`) | start page: links to the others and shows if they're up | nothing to do |
 | Immich | <http://laptop.local:2283> | photos and videos, backed up from the phone | the page asks you to create the admin account; then install the Immich app on the phone and sign in with server `http://laptop.local:2283` |
 | Jellyfin | <http://laptop.local:8096> | films, series, music | the page walks you through creating the admin account; add `/home/pawel/Videos` and `/home/pawel/Music` as libraries |
 | Navidrome | <http://laptop.local:4533> | music | the page asks you to create the admin account |

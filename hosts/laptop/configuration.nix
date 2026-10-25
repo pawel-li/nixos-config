@@ -96,8 +96,9 @@
     };
   };
 
-  # Glance: the start page, http://laptop.local:8080. Links to every service
-  # below and shows whether each one is up.
+  # Glance: the start page, at http://laptop.local (nginx below passes port 80
+  # on to it) and http://laptop.local:8080. Links to every service below and
+  # shows whether each one is up.
   services.glance = {
     enable = true;
     openFirewall = true;
@@ -154,6 +155,18 @@
           ];
         }
       ];
+    };
+  };
+
+  # Makes http://laptop.local/ show Glance. Also answers when the laptop is
+  # opened by its IP address or any other name.
+  services.nginx = {
+    enable = true;
+    recommendedProxySettings = true;
+    virtualHosts.glance = {
+      default = true;
+      locations."/".proxyPass =
+        "http://127.0.0.1:${toString config.services.glance.settings.server.port}";
     };
   };
 
@@ -216,7 +229,12 @@
       PAPERLESS_OCR_LANGUAGE=pol+eng
     '';
   };
-  networking.firewall.allowedTCPPorts = [ config.services.paperless.port ];
+
+  # Ports for nginx and Paperless, whose modules can't open them themselves.
+  networking.firewall.allowedTCPPorts = [
+    80
+    config.services.paperless.port
+  ];
 
   # Navidrome music server. Put music in ~/Music, then open
   # http://laptop.local:4533; the first visit asks you to create the admin
