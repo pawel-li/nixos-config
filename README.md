@@ -52,16 +52,20 @@ stopped halfway, just run it again: it picks up where it stopped.
 
 ## Music (Navidrome)
 
-Copy music into `~/Music` and open <http://localhost:4533>. The first visit
-asks you to create the admin account. New files show up on their own, usually
-within seconds; no rescan needed.
+Copy music into `~/Music` and open <http://laptop.local:4533> from any device
+on the same network (phone, Mac), or <http://localhost:4533> on the laptop.
+Create the admin account on the first visit, right away: until then anyone on
+the network who opens the page can create it. New files show up on their own,
+usually within seconds; no rescan needed.
 
-It listens only on the laptop itself. To reach it from a phone on your home
-Wi-Fi, add `settings.Address = "0.0.0.0";` and `openFirewall = true;` to
-`services.navidrome` in `hosts/laptop/configuration.nix`. Do that only after
-creating the admin account, because until then anyone who opens the page can
-create it. It also makes the login page reachable on every network the laptop
-joins, cafés included.
+## Services on the network
+
+Every service in `hosts/laptop/configuration.nix` is meant for the whole home
+network. Other devices find the laptop as `laptop.local`. When you add a
+service, make it listen on every address and open its port (most NixOS
+services have `openFirewall = true;` for that). Anything not opened that way
+stays blocked by the firewall. The ports are open on every network the laptop
+joins, so log-ins matter.
 
 ## Day-to-day
 
