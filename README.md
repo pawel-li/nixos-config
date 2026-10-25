@@ -83,6 +83,20 @@ network. When you add one, make it listen on every address and open its port
 Glance page. Anything not opened that way stays blocked by the firewall. The
 ports are open on every network the laptop joins, so log-ins matter.
 
+## Always on
+
+The laptop never goes to sleep, so the services are reachable around the
+clock: closing the lid does nothing, GNOME's automatic suspend is off (at the
+login screen too), and suspend and hibernate are switched off altogether. No
+one needs to be logged in. The screen still turns off when idle, and the power
+button asks what to do. In a power cut it keeps running on battery and shuts
+down cleanly when the battery is nearly empty; press the power button to start
+it again.
+
+Plugged in all the time, the battery sits at 100%, which wears it out faster.
+If GNOME Settings → Power offers a charge limit ("Preserve Battery Health"),
+turn it on.
+
 ## Day-to-day
 
 - **Change something:** edit `hosts/laptop/configuration.nix` (from the Mac or

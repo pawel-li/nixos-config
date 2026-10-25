@@ -42,6 +42,32 @@
   services.fwupd.enable = true;
   services.printing.enable = true;
 
+  # Stays on around the clock so the services below are always reachable:
+  # closing the lid does nothing, and nothing can suspend or hibernate it.
+  # The screen still turns off when idle.
+  services.logind.settings.Login.HandleLidSwitch = "ignore";
+  systemd.sleep.settings.Sleep = {
+    AllowSuspend = "no";
+    AllowHibernation = "no";
+    AllowHybridSleep = "no";
+    AllowSuspendThenHibernate = "no";
+  };
+  # GNOME's idle timers, at the login screen and in your session, so it never
+  # tries (or offers) to suspend. The power button asks what to do.
+  services.displayManager.gdm.autoSuspend = false;
+  programs.dconf.profiles.user.databases = [
+    {
+      settings."org/gnome/settings-daemon/plugins/power" = {
+        sleep-inactive-ac-type = "nothing";
+        sleep-inactive-battery-type = "nothing";
+        power-button-action = "interactive";
+      };
+    }
+  ];
+  # In a power cut it keeps going on battery, then shuts down cleanly when the
+  # battery is nearly empty (the default, hybrid sleep, is switched off above).
+  services.upower.criticalPowerAction = "PowerOff";
+
   nixpkgs.config.allowUnfree = true;
 
   users.users.pawel = {
