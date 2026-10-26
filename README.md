@@ -54,7 +54,10 @@ stopped halfway, just run it again: it picks up where it stopped.
 
 ## Services
 
-Open them from any device on the home network (phone, Mac, the laptop itself):
+Open them from any device on the home Wi-Fi (phone, Mac, the laptop itself).
+They answer nothing else: not the internet, not a device on a network cable.
+If the laptop ever joins another Wi-Fi network, they'd answer there too, so
+it should stay at home.
 
 | Service | Address | What for | First time |
 | ------- | ------- | -------- | ---------- |
@@ -63,12 +66,12 @@ Open them from any device on the home network (phone, Mac, the laptop itself):
 | Jellyfin | <http://laptop.local:8096> | films, series, music | the page walks you through creating the admin account; add `/home/pawel/Videos` and `/home/pawel/Music` as libraries |
 | Navidrome | <http://laptop.local:4533> | music | the page asks you to create the admin account |
 | Paperless-ngx | <http://laptop.local:28981> | scanned documents and PDFs, searchable (Polish and English text) | on the laptop run `sudo paperless-manage createsuperuser` once and pick a username and password |
-| JobOps | <http://laptop.local:3005> | job search: finds offers, scores them against your CV, writes a CV for each one and tracks your applications | the page asks you to create your account, pick an AI provider and upload your CV; see [JobOps](#jobops) |
-| Coder | <http://laptop.local:3000>, and a public `https://….try.coder.app` address | development machines that you or an AI agent start on demand, on the laptop or in the cloud | the page asks you to create the admin account; see [Coder](#coder) |
+| JobOps | <http://laptop.local:3001> | job search: finds offers, scores them against your CV, writes a CV for each one and tracks your applications | the page asks you to create your account, pick an AI provider and upload your CV; see [JobOps](#jobops) |
+| Coder | <http://laptop.local:3000> | development machines on the laptop that you or an AI agent start on demand | the page asks you to create the admin account; see [Coder](#coder) |
 
 Do the first-time steps right away: until Immich, Jellyfin, Navidrome, JobOps
-and Coder have an admin account, anyone on the network who opens the page can
-create it (for Coder, anyone who has its public address).
+and Coder have an admin account, anyone on the Wi-Fi who opens the page can
+create it.
 
 - **Music and videos:** copy them into `~/Music` and `~/Videos`. Navidrome and
   Jellyfin see only those two folders, read-only. Navidrome picks up new files
@@ -100,32 +103,27 @@ newest release every Monday. Its database and the CVs it writes live in
 - **Gmail** (JobOps then follows replies from recruiters and updates each
   application): create a Google OAuth client as the
   [Gmail guide](https://jobops.dakheera47.com/docs/getting-started/gmail-oauth-setup)
-  shows, with redirect URI `http://localhost:3005/oauth/gmail/callback`. Add
+  shows, with redirect URI `http://localhost:3001/oauth/gmail/callback`. Add
   `GMAIL_OAUTH_CLIENT_ID=…` and `GMAIL_OAUTH_CLIENT_SECRET=…` to the file and
-  restart. Then, on the laptop itself, open <http://localhost:3005>, go to
+  restart. Then, on the laptop itself, open <http://localhost:3001>, go to
   Tracking Inbox and connect Gmail. Google takes a plain-http address only for
   `localhost`, so this one step has to happen on the laptop.
 
 ### Coder
 
 Coder runs development machines ("workspaces") from templates, for you or
-for an AI agent.
+for an AI agent on the home Wi-Fi.
 
-- **Address:** with no domain of its own, Coder opens a free tunnel and gets a
-  public `https://….try.coder.app` address, which stays the same across
-  restarts. Cloud machines and agents outside the home network reach Coder
-  through it. Find it with `journalctl -u coder | grep try.coder.app | tail -1`.
-  On the home network <http://laptop.local:3000> works too.
-- **First workspace:** Templates → Create Template. Docker runs workspaces in
-  containers here on the laptop. For machines in the cloud pick that
-  provider's template (AWS, Google Cloud, Azure, …) and put its keys in
-  `/var/lib/coder/env`, for example `AWS_ACCESS_KEY_ID=…` and
-  `AWS_SECRET_ACCESS_KEY=…`, then run `sudo systemctl restart coder`.
-- **Agents:** where the agent runs, sign in once with
-  `coder login https://….try.coder.app`. Then it can use `coder create`,
-  `coder ssh` and the rest. For Claude Code,
+- **First workspace:** Templates → Create Template → Docker. Workspaces run in
+  containers here on the laptop. The cloud templates (AWS, Google Cloud, …)
+  won't work: a machine in the cloud has to reach Coder, and Coder answers
+  only on the home Wi-Fi.
+- **Agents:** on the Mac or the laptop, sign in once with
+  `coder login http://laptop.local:3000`. Then the agent can use
+  `coder create`, `coder ssh` and the rest. For Claude Code,
   `claude mcp add coder -- coder exp mcp server` gives it tools to create
-  workspaces and run commands in them.
+  workspaces and run commands in them. Agents running in the cloud (Claude
+  Code on the web, say) can't reach Coder.
 - Coder downloads Terraform, which it uses to build workspaces, the first time
   it needs it.
 
@@ -152,11 +150,13 @@ stay on the tablet.
 
 ### Adding a service
 
-Every service in `hosts/laptop/configuration.nix` is meant for the whole home
-network. When you add one, make it listen on every address and open its port
-(most NixOS services have `openFirewall = true;` for that), then add it to the
-Glance page. Anything not opened that way stays blocked by the firewall. The
-ports are open on every network the laptop joins, so log-ins matter.
+Every service in `hosts/laptop/configuration.nix` is meant for the home
+Wi-Fi. When you add one, make it listen on every address, add its port to
+`wifiTcpPorts` near the top of that file, then add it to the Glance page.
+Leave its `openFirewall` off: that would open the port on every network, cable
+and IPv6 included. Anything not in the list stays blocked by the firewall.
+Docker containers get the same treatment only with `networks = [ "host" ]`,
+as JobOps has: a port published the usual Docker way gets past the firewall.
 
 ## Always on
 

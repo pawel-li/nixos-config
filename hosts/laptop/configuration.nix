@@ -84,24 +84,56 @@
   };
   nix.optimise.automatic = true;
 
-  # Services here are for the whole home network: each one listens on every
-  # address and opens its port in the firewall. Other devices reach them at
-  # laptop.local, which avahi announces on the network. nssmdns4 lets the
-  # laptop itself use .local names too, so the same links work everywhere.
+  # Services here are for the home Wi-Fi: each one listens on every address,
+  # and the firewall lets them answer only devices on the Wi-Fi network the
+  # laptop is on, over IPv4 (the ports below). Nothing else gets through: not
+  # the internet, not a network cable, not Docker containers (except Coder's,
+  # further down). Other devices reach the services at laptop.local, which
+  # avahi announces on the network. It announces only the IPv4 address, so
+  # devices don't try the blocked IPv6 one first. nssmdns4 lets the laptop
+  # itself use .local names too, so the same links work everywhere.
   services.avahi = {
     nssmdns4 = true;
+    ipv6 = false;
     publish = {
       enable = true;
       addresses = true;
     };
   };
+  networking.firewall.extraCommands =
+    let
+      wifiTcpPorts = [
+        80 # Glance, through nginx
+        8080 # Glance
+        2283 # Immich
+        8096 # Jellyfin
+        4533 # Navidrome
+        28981 # Paperless
+        3001 # JobOps
+        3000 # Coder
+      ];
+      wifiUdpPorts = [
+        1900 # Jellyfin, for TVs and players that look for media servers
+        7359 # Jellyfin, for its apps to find it
+      ];
+      portList = ports: lib.concatMapStringsSep "," toString ports;
+    in
+    # wl+ is any Wi-Fi interface. A service's openFirewall = true would open
+    # its port on every network instead, so the services here leave it off.
+    # docker0 is Docker's network: Coder's workspaces reach Coder (3000) and
+    # its DNS server (53) through it.
+    ''
+      iptables -w -A nixos-fw -i wl+ -p tcp -m multiport --dports ${portList wifiTcpPorts} -j nixos-fw-accept
+      iptables -w -A nixos-fw -i wl+ -p udp -m multiport --dports ${portList wifiUdpPorts} -j nixos-fw-accept
+      iptables -w -A nixos-fw -i docker0 -p tcp -m multiport --dports 53,3000 -j nixos-fw-accept
+      iptables -w -A nixos-fw -i docker0 -p udp --dport 53 -j nixos-fw-accept
+    '';
 
   # Glance: the start page, at http://laptop.local (nginx below passes port 80
   # on to it) and http://laptop.local:8080. Links to every service below and
   # shows whether each one is up.
   services.glance = {
     enable = true;
-    openFirewall = true;
     settings = {
       server.host = "[::]"; # every address, IPv4 and IPv6
       pages = [
@@ -150,8 +182,8 @@
                     }
                     {
                       title = "JobOps";
-                      url = "http://laptop.local:3005";
-                      check-url = "http://127.0.0.1:3005/health";
+                      url = "http://laptop.local:3001";
+                      check-url = "http://127.0.0.1:3001/health";
                       icon = "mdi:briefcase-search";
                     }
                     {
@@ -192,7 +224,6 @@
   services.immich = {
     enable = true;
     host = "::"; # every address, IPv4 and IPv6
-    openFirewall = true;
   };
   systemd.services.immich-server.serviceConfig = {
     ProtectHome = lib.mkForce "tmpfs";
@@ -207,7 +238,6 @@
     enable = true;
     user = "pawel";
     group = "users";
-    openFirewall = true;
   };
   systemd.services.jellyfin.serviceConfig = {
     ProtectHome = "tmpfs";
@@ -242,13 +272,6 @@
     '';
   };
 
-  # Ports for nginx, Paperless and Coder, whose modules can't open them themselves.
-  networking.firewall.allowedTCPPorts = [
-    80
-    config.services.paperless.port
-    3000 # Coder
-  ];
-
   # Navidrome music server. Put music in ~/Music, then open
   # http://laptop.local:4533; the first visit asks you to create the admin
   # account. It runs as pawel so it can read whatever you copy there, and it
@@ -257,7 +280,6 @@
     enable = true;
     user = "pawel";
     group = "users";
-    openFirewall = true;
     settings = {
       MusicFolder = "/home/pawel/Music";
       Address = "[::]"; # every address, IPv4 and IPv6
@@ -267,13 +289,15 @@
   # the ~/Music folder above show through.
   systemd.services.navidrome.serviceConfig.ProtectHome = lib.mkForce "tmpfs";
 
-  # JobOps: job search and applications, http://laptop.local:3005. It searches
+  # JobOps: job search and applications, http://laptop.local:3001. It searches
   # job boards, scores each offer against your CV, writes a CV for the ones you
   # pick and tracks where you applied. The first visit asks you to create your
   # account. It isn't packaged for NixOS, so it runs in Docker from the
   # project's own image and keeps its data in /var/lib/job-ops. Settings that
   # can't be made on the page, such as Gmail access, go in /var/lib/job-ops/env
-  # (see the README). Docker opens port 3005 itself, past the firewall.
+  # (see the README). It uses the laptop's network directly, so the Wi-Fi-only
+  # firewall rules apply to it: a port published the usual Docker way would
+  # get past them.
   virtualisation.docker = {
     enable = true;
     autoPrune.enable = true; # weekly, clears out images replaced by updates
@@ -282,7 +306,7 @@
     backend = "docker";
     containers.job-ops = {
       image = "ghcr.io/dakheera47/job-ops:latest";
-      ports = [ "3005:3001" ];
+      networks = [ "host" ];
       volumes = [
         "/var/lib/job-ops/data:/app/data"
         "/var/lib/job-ops/codex-home:/app/codex-home"
@@ -312,18 +336,17 @@
     '';
   };
 
-  # Coder: development machines ("workspaces") that you or an AI agent start
-  # on demand, at http://laptop.local:3000. The first visit asks you to create
-  # the admin account. Workspaces come from templates you pick on the page:
-  # Docker runs them here on the laptop, the cloud ones (AWS, Google Cloud,
-  # Azure, ...) on machines rented from that provider, whose keys go in
-  # /var/lib/coder/env. With no access URL set, Coder opens a tunnel to a
-  # public https://...try.coder.app address, so cloud machines and agents
-  # outside the home network can reach it too (see the README).
+  # Coder: development machines ("workspaces") that you or an AI agent on the
+  # home Wi-Fi start on demand, at http://laptop.local:3000. The first visit
+  # asks you to create the admin account. Its Docker template runs workspaces
+  # in containers here on the laptop. Its cloud templates won't work: machines
+  # in the cloud can't reach Coder on the home network.
   services.coder = {
     enable = true;
     listenAddress = "[::]:3000"; # every address, IPv4 and IPv6
-    environment.file = "/var/lib/coder/env";
+    # Where devices and workspaces reach Coder. Without it, Coder would open a
+    # tunnel from a public address on the internet.
+    accessUrl = "http://laptop.local:3000";
     # Without Terraform bundled, Coder downloads the version it's tested with
     # on first use. The bundled one is newer than Coder supports, and NixOS
     # doesn't prebuild it (its licence isn't free), so the laptop would
@@ -337,10 +360,25 @@
   };
   # Lets Coder's Docker template run workspaces on the laptop.
   users.users.coder.extraGroups = [ "docker" ];
-  systemd.tmpfiles.settings.coder."/var/lib/coder/env".f = {
-    mode = "0600";
-    user = "coder";
-    group = "coder";
+  # Coder looks names up without avahi, so it finds laptop.local here.
+  networking.hosts."127.0.0.2" = lib.mkAfter [ "laptop.local" ];
+  # Workspace containers can't use avahi either. Docker points them at this
+  # small DNS server, which answers laptop.local with the laptop's address on
+  # Docker's network and passes every other name on to the laptop's own DNS
+  # servers. The firewall rules at the top let workspaces reach it and Coder.
+  virtualisation.docker.daemon.settings = {
+    bip = "172.17.0.1/16"; # Docker's usual network, pinned for the line below
+    dns = [ "172.17.0.1" ];
+  };
+  services.dnsmasq = {
+    enable = true;
+    resolveLocalQueries = false; # the laptop itself keeps its DNS as it is
+    settings = {
+      interface = "docker0";
+      bind-dynamic = true; # docker0 comes up after dnsmasq starts
+      no-hosts = true; # /etc/hosts says 127.0.0.2, which is right only for the laptop
+      address = "/laptop.local/172.17.0.1";
+    };
   };
 
   # reMarkable: drop a PDF or EPUB into ~/reMarkable and it shows up on the
