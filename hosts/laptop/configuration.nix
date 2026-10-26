@@ -148,6 +148,18 @@
                       check-url = "http://127.0.0.1:28981/accounts/login/";
                       icon = "di:paperless-ngx";
                     }
+                    {
+                      title = "JobOps";
+                      url = "http://laptop.local:3005";
+                      check-url = "http://127.0.0.1:3005/health";
+                      icon = "mdi:briefcase-search";
+                    }
+                    {
+                      title = "Coder";
+                      url = "http://laptop.local:3000";
+                      check-url = "http://127.0.0.1:3000/healthz";
+                      icon = "di:coder";
+                    }
                   ];
                 }
               ];
@@ -230,10 +242,11 @@
     '';
   };
 
-  # Ports for nginx and Paperless, whose modules can't open them themselves.
+  # Ports for nginx, Paperless and Coder, whose modules can't open them themselves.
   networking.firewall.allowedTCPPorts = [
     80
     config.services.paperless.port
+    3000 # Coder
   ];
 
   # Navidrome music server. Put music in ~/Music, then open
@@ -254,11 +267,141 @@
   # the ~/Music folder above show through.
   systemd.services.navidrome.serviceConfig.ProtectHome = lib.mkForce "tmpfs";
 
+  # JobOps: job search and applications, http://laptop.local:3005. It searches
+  # job boards, scores each offer against your CV, writes a CV for the ones you
+  # pick and tracks where you applied. The first visit asks you to create your
+  # account. It isn't packaged for NixOS, so it runs in Docker from the
+  # project's own image and keeps its data in /var/lib/job-ops. Settings that
+  # can't be made on the page, such as Gmail access, go in /var/lib/job-ops/env
+  # (see the README). Docker opens port 3005 itself, past the firewall.
+  virtualisation.docker = {
+    enable = true;
+    autoPrune.enable = true; # weekly, clears out images replaced by updates
+  };
+  virtualisation.oci-containers = {
+    backend = "docker";
+    containers.job-ops = {
+      image = "ghcr.io/dakheera47/job-ops:latest";
+      ports = [ "3005:3001" ];
+      volumes = [
+        "/var/lib/job-ops/data:/app/data"
+        "/var/lib/job-ops/codex-home:/app/codex-home"
+        "/var/lib/job-ops/tectonic-cache:/root/.cache/Tectonic"
+      ];
+      environmentFiles = [ "/var/lib/job-ops/env" ];
+    };
+  };
+  systemd.tmpfiles.settings.job-ops = {
+    "/var/lib/job-ops".d.mode = "0700";
+    "/var/lib/job-ops/env".f.mode = "0600";
+  };
+  # Moves JobOps to its latest release once a week. It restarts only when
+  # there is a new one.
+  systemd.services.job-ops-update = {
+    description = "Update JobOps to its latest release";
+    startAt = "weekly";
+    path = [ config.virtualisation.docker.package ];
+    serviceConfig.Type = "oneshot";
+    script = ''
+      image=${config.virtualisation.oci-containers.containers.job-ops.image}
+      old=$(docker image inspect --format '{{.Id}}' "$image" || true)
+      docker pull --quiet "$image"
+      if [ "$(docker image inspect --format '{{.Id}}' "$image")" != "$old" ]; then
+        systemctl restart docker-job-ops.service
+      fi
+    '';
+  };
+
+  # Coder: development machines ("workspaces") that you or an AI agent start
+  # on demand, at http://laptop.local:3000. The first visit asks you to create
+  # the admin account. Workspaces come from templates you pick on the page:
+  # Docker runs them here on the laptop, the cloud ones (AWS, Google Cloud,
+  # Azure, ...) on machines rented from that provider, whose keys go in
+  # /var/lib/coder/env. With no access URL set, Coder opens a tunnel to a
+  # public https://...try.coder.app address, so cloud machines and agents
+  # outside the home network can reach it too (see the README).
+  services.coder = {
+    enable = true;
+    listenAddress = "[::]:3000"; # every address, IPv4 and IPv6
+    environment.file = "/var/lib/coder/env";
+    # Without Terraform bundled, Coder downloads the version it's tested with
+    # on first use. The bundled one is newer than Coder supports, and NixOS
+    # doesn't prebuild it (its licence isn't free), so the laptop would
+    # compile it itself after nixpkgs updates.
+    package = pkgs.coder.override { terraform = pkgs.emptyDirectory; };
+  };
+  # Its module doesn't wait for the database it sets up.
+  systemd.services.coder = {
+    requires = [ "postgresql.target" ];
+    after = [ "postgresql.target" ];
+  };
+  # Lets Coder's Docker template run workspaces on the laptop.
+  users.users.coder.extraGroups = [ "docker" ];
+  systemd.tmpfiles.settings.coder."/var/lib/coder/env".f = {
+    mode = "0600";
+    user = "coder";
+    group = "coder";
+  };
+
+  # reMarkable: drop a PDF or EPUB into ~/reMarkable and it shows up on the
+  # tablet a moment later, through reMarkable's free cloud sync (no Connect
+  # subscription needed). Sent files move to ~/reMarkable/Sent. Sign in once
+  # first: run `rmapi` in a terminal and enter the code from
+  # https://my.remarkable.com/device/browser/connect.
+  systemd.services.remarkable-upload = {
+    description = "Send files dropped into ~/reMarkable to the reMarkable tablet";
+    wantedBy = [ "multi-user.target" ];
+    wants = [ "network-online.target" ];
+    after = [ "network-online.target" ];
+    path = [
+      pkgs.rmapi
+      pkgs.inotify-tools
+    ];
+    serviceConfig = {
+      User = "pawel";
+      Restart = "always";
+      RestartSec = 30;
+    };
+    script = ''
+      shopt -s nullglob nocaseglob
+      cd /home/pawel/reMarkable
+      upload() {
+        for f in *.pdf *.epub; do
+          # Skips empty files: browsers create one before the download lands.
+          if [ -s "$f" ] && rmapi -ni put "./$f" /; then
+            mv -- "$f" Sent/
+          fi
+        done
+      }
+      # Uploads whenever a file finishes copying or is moved in, and every hour
+      # to retry files that didn't go through (say, before rmapi was signed
+      # in). Events that come in during an upload wait in the pipe; once a
+      # second goes by without one, a single upload covers them all.
+      inotifywait --monitor --quiet --event close_write --event moved_to --format x . | {
+        upload
+        while read -r -t 3600 _ || [ $? -gt 128 ]; do
+          while read -r -t 1 _; do :; done
+          upload
+        done
+      }
+    '';
+  };
+  systemd.tmpfiles.settings.remarkable =
+    lib.genAttrs [ "/home/pawel/reMarkable" "/home/pawel/reMarkable/Sent" ] (_: {
+      d = {
+        mode = ":755";
+        user = ":pawel";
+        group = ":users";
+      };
+    });
+
   programs.firefox.enable = true;
   environment.systemPackages = with pkgs; [
+    config.services.coder.package # the `coder` command, for you and your agents
     curl
     gh
     git
+    rmapi # reMarkable cloud from the terminal
     vim
   ];
 

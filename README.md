@@ -1,7 +1,8 @@
 # nixos-config
 
 NixOS configuration for my laptop (GNOME, NixOS 26.05) that also serves Glance,
-Immich, Jellyfin, Navidrome and Paperless-ngx to the home network. The laptop follows
+Immich, Jellyfin, Navidrome, Paperless-ngx, JobOps and Coder to the home network
+and sends PDFs to a reMarkable tablet. The laptop follows
 the `main` branch: push a change here and the laptop applies it on its own
 within about 5 minutes.
 
@@ -62,9 +63,12 @@ Open them from any device on the home network (phone, Mac, the laptop itself):
 | Jellyfin | <http://laptop.local:8096> | films, series, music | the page walks you through creating the admin account; add `/home/pawel/Videos` and `/home/pawel/Music` as libraries |
 | Navidrome | <http://laptop.local:4533> | music | the page asks you to create the admin account |
 | Paperless-ngx | <http://laptop.local:28981> | scanned documents and PDFs, searchable (Polish and English text) | on the laptop run `sudo paperless-manage createsuperuser` once and pick a username and password |
+| JobOps | <http://laptop.local:3005> | job search: finds offers, scores them against your CV, writes a CV for each one and tracks your applications | the page asks you to create your account, pick an AI provider and upload your CV; see [JobOps](#jobops) |
+| Coder | <http://laptop.local:3000>, and a public `https://….try.coder.app` address | development machines that you or an AI agent start on demand, on the laptop or in the cloud | the page asks you to create the admin account; see [Coder](#coder) |
 
-Do the first-time steps right away: until Immich, Jellyfin and Navidrome have an
-admin account, anyone on the network who opens the page can create it.
+Do the first-time steps right away: until Immich, Jellyfin, Navidrome, JobOps
+and Coder have an admin account, anyone on the network who opens the page can
+create it (for Coder, anyone who has its public address).
 
 - **Music and videos:** copy them into `~/Music` and `~/Videos`. Navidrome and
   Jellyfin see only those two folders, read-only. Navidrome picks up new files
@@ -79,6 +83,72 @@ admin account, anyone on the network who opens the page can create it.
 - **A device can't open `laptop.local`** (some Android browsers): use the
   laptop's IP address instead, from GNOME Settings → Wi-Fi → the gear icon
   next to your network.
+
+### JobOps
+
+JobOps runs in Docker from the project's own image and updates itself to the
+newest release every Monday. Its database and the CVs it writes live in
+`/var/lib/job-ops/data`. Settings that can't be made on the page go in
+`/var/lib/job-ops/env`, one `NAME=value` per line: edit it with
+`sudoedit /var/lib/job-ops/env`, then run `sudo systemctl restart docker-job-ops`.
+
+- **AI:** OpenRouter, OpenAI and Gemini take their API key right on the page.
+  For Claude, add `ANTHROPIC_API_KEY=…` to the file, or use your Claude
+  subscription: run `claude setup-token` wherever you have Claude Code (the
+  Mac, say) and add `CLAUDE_CODE_OAUTH_TOKEN=…`. Then pick Claude CLI as the
+  provider in JobOps.
+- **Gmail** (JobOps then follows replies from recruiters and updates each
+  application): create a Google OAuth client as the
+  [Gmail guide](https://jobops.dakheera47.com/docs/getting-started/gmail-oauth-setup)
+  shows, with redirect URI `http://localhost:3005/oauth/gmail/callback`. Add
+  `GMAIL_OAUTH_CLIENT_ID=…` and `GMAIL_OAUTH_CLIENT_SECRET=…` to the file and
+  restart. Then, on the laptop itself, open <http://localhost:3005>, go to
+  Tracking Inbox and connect Gmail. Google takes a plain-http address only for
+  `localhost`, so this one step has to happen on the laptop.
+
+### Coder
+
+Coder runs development machines ("workspaces") from templates, for you or
+for an AI agent.
+
+- **Address:** with no domain of its own, Coder opens a free tunnel and gets a
+  public `https://….try.coder.app` address, which stays the same across
+  restarts. Cloud machines and agents outside the home network reach Coder
+  through it. Find it with `journalctl -u coder | grep try.coder.app | tail -1`.
+  On the home network <http://laptop.local:3000> works too.
+- **First workspace:** Templates → Create Template. Docker runs workspaces in
+  containers here on the laptop. For machines in the cloud pick that
+  provider's template (AWS, Google Cloud, Azure, …) and put its keys in
+  `/var/lib/coder/env`, for example `AWS_ACCESS_KEY_ID=…` and
+  `AWS_SECRET_ACCESS_KEY=…`, then run `sudo systemctl restart coder`.
+- **Agents:** where the agent runs, sign in once with
+  `coder login https://….try.coder.app`. Then it can use `coder create`,
+  `coder ssh` and the rest. For Claude Code,
+  `claude mcp add coder -- coder exp mcp server` gives it tools to create
+  workspaces and run commands in them.
+- Coder downloads Terraform, which it uses to build workspaces, the first time
+  it needs it.
+
+### reMarkable
+
+Drop a PDF or EPUB into `~/reMarkable` on the laptop and it shows up on the
+tablet a moment later. Sent files move to `~/reMarkable/Sent`. It goes through
+reMarkable's free cloud sync, so you don't need a Connect subscription. Without
+Connect, files you haven't opened in 50 days drop out of the cloud, but they
+stay on the tablet.
+
+- **Sign in once:** in a terminal on the laptop run `rmapi`, open
+  <https://my.remarkable.com/device/browser/connect>, log in and type the code
+  it shows into the terminal. Then type `exit`. Files that were already waiting
+  go out within the hour, or right away after
+  `sudo systemctl restart remarkable-upload`.
+- **A file stays in `~/reMarkable`:** `journalctl -u remarkable-upload` says
+  why. A file isn't sent if the tablet already has a document with the same
+  name. Rename the file and it goes out.
+- **From the Mac or phone:** the free reMarkable apps
+  (<https://remarkable.com/download>) take files too. With no app at all,
+  connect the tablet by USB, turn on the USB web interface under Settings →
+  Storage and open <http://10.11.99.1>.
 
 ### Adding a service
 
