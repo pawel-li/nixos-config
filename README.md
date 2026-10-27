@@ -1,10 +1,10 @@
 # nixos-config
 
 NixOS configuration for my laptop (GNOME, NixOS 26.05) that also serves Glance,
-Immich, Jellyfin, Navidrome, Paperless-ngx, JobOps and Coder to the home network
-and sends PDFs to a reMarkable tablet. The laptop follows
-the `main` branch: push a change here and the laptop applies it on its own
-within about 5 minutes.
+Immich, Jellyfin, Navidrome, Paperless-ngx, JobOps, Reactive Resume, Coder,
+Open WebUI and Home Assistant to the home Wi-Fi and sends PDFs to a
+reMarkable tablet. The laptop follows the `main` branch: push a change here
+and the laptop applies it on its own within about 5 minutes.
 
 ```
 flake.nix                      entry point: nixosConfigurations.laptop
@@ -69,11 +69,13 @@ it should stay at home.
 | JobOps | <http://laptop.local:3001> | job search: finds offers, scores them against your CV, writes a CV for each one and tracks your applications | the page asks you to create your account, pick an AI provider and upload your CV; see [JobOps](#jobops) |
 | Reactive Resume | <http://laptop.local:3002> | resume builder; JobOps can write its CVs into it | the page asks you to create your account; see [Reactive Resume](#reactive-resume) |
 | Coder | <http://laptop.local:3000> | development machines on the laptop that you or an AI agent start on demand | the page asks you to create the admin account; see [Coder](#coder) |
+| Open WebUI | <http://laptop.local:8081> | chat with AI models, on the laptop or online | the page asks you to create the admin account; see [Open WebUI](#open-webui) |
+| Home Assistant | <http://laptop.local:8123> | smart home: lights, sensors, automations | the page walks you through creating your account and your home's location; see [Home Assistant](#home-assistant) |
 
-Do the first-time steps right away: until Immich, Jellyfin, Navidrome, JobOps
-and Coder have an admin account, anyone on the Wi-Fi who opens the page can
-create it. Reactive Resume lets anyone on the Wi-Fi sign up until you turn
-sign-ups off.
+Do the first-time steps right away: until Immich, Jellyfin, Navidrome, JobOps,
+Coder, Open WebUI and Home Assistant have an admin account, anyone on the
+Wi-Fi who opens the page can create it. Reactive Resume lets anyone on the
+Wi-Fi sign up until you turn sign-ups off.
 
 - **Music and videos:** copy them into `~/Music` and `~/Videos`. Navidrome and
   Jellyfin see only those two folders, read-only. Navidrome picks up new files
@@ -179,6 +181,37 @@ stay on the tablet.
   (<https://remarkable.com/download>) take files too. With no app at all,
   connect the tablet by USB, turn on the USB web interface under Settings →
   Storage and open <http://10.11.99.1>.
+
+### Open WebUI
+
+Open WebUI runs in Docker and moves to its newest release every Monday. Its
+chats and settings live in `/var/lib/open-webui`. It has two kinds of models:
+
+- **On the laptop**, through Ollama: download one under Admin Panel →
+  Settings → Models (for example `llama3.2:3b` or `qwen3:8b`). The laptop has
+  no graphics card for this, so the processor does the work: small models
+  answer in seconds, big ones crawl. JobOps can use them too: pick Ollama in
+  its AI settings, at `http://localhost:11434`.
+- **Online** (OpenAI, OpenRouter, Anthropic, …): add the provider's API key
+  under Admin Panel → Settings → Connections.
+
+People who sign up after you can't use it until you approve them under Admin
+Panel → Users.
+
+### Home Assistant
+
+Home Assistant finds many devices on the Wi-Fi by itself; they show up under
+Settings → Devices & services. Install the Home Assistant app on your phone
+and sign in with `http://laptop.local:8123`. Like everything here it works
+only at home.
+
+- **No add-ons:** this is Home Assistant on its own, without the Supervisor
+  that add-ons need. Integrations work as usual.
+- **An integration says a Python package is missing:** add the integration's
+  name (the last part of its address on home-assistant.io, such as `hue` for
+  `/integrations/hue`) to `extraComponents` in `configuration.nix`.
+- Automations, scenes and scripts you make on the page are kept in
+  `/var/lib/hass`; `configuration.yaml` comes from `configuration.nix`.
 
 ### Adding a service
 

@@ -112,6 +112,8 @@
         3001 # JobOps
         3002 # Reactive Resume
         3000 # Coder
+        8081 # Open WebUI
+        8123 # Home Assistant
       ];
       wifiUdpPorts = [
         1900 # Jellyfin, for TVs and players that look for media servers
@@ -198,6 +200,18 @@
                       url = "http://laptop.local:3000";
                       check-url = "http://127.0.0.1:3000/healthz";
                       icon = "di:coder";
+                    }
+                    {
+                      title = "Open WebUI";
+                      url = "http://laptop.local:8081";
+                      check-url = "http://127.0.0.1:8081/health";
+                      icon = "di:open-webui";
+                    }
+                    {
+                      title = "Home Assistant";
+                      url = "http://laptop.local:8123";
+                      check-url = "http://127.0.0.1:8123/manifest.json";
+                      icon = "di:home-assistant";
                     }
                   ];
                 }
@@ -538,6 +552,75 @@
         group = ":users";
       };
     });
+
+  # Open WebUI: a chat page for AI models, at http://laptop.local:8081. The
+  # first visit asks you to create the admin account; anyone who signs up
+  # after you waits for your approval. It runs models here on the laptop
+  # through Ollama below, and online ones (OpenAI, OpenRouter, ...) once you
+  # add their API key under Admin Panel → Settings → Connections. It runs in
+  # Docker from the project's own image like JobOps: nixpkgs' licence check
+  # counts Open WebUI as not free, so NixOS doesn't prebuild it and the laptop
+  # would compile it after every update. Its data is in /var/lib/open-webui.
+  virtualisation.oci-containers.containers.open-webui = {
+    image = "ghcr.io/open-webui/open-webui:main"; # its newest release
+    networks = [ "host" ];
+    environment = {
+      PORT = "8081"; # Glance has 8080
+      OLLAMA_BASE_URL = "http://127.0.0.1:11434";
+      # Keeps the sign-in key with the data, so a restart doesn't sign you out.
+      WEBUI_SECRET_KEY_FILE = "/app/backend/data/.webui_secret_key";
+      SCARF_NO_ANALYTICS = "True";
+      DO_NOT_TRACK = "True";
+      ANONYMIZED_TELEMETRY = "False";
+    };
+    volumes = [ "/var/lib/open-webui:/app/backend/data" ];
+  };
+  # Ollama runs AI models on the laptop, for Open WebUI and for JobOps (at
+  # http://localhost:11434). It answers only the laptop itself. Download
+  # models in Open WebUI under Admin Panel → Settings → Models. With no
+  # graphics card to use, it runs them on the processor, so small models
+  # (3-8B) work best.
+  services.ollama.enable = true;
+
+  # Home Assistant: smart home, at http://laptop.local:8123. The first visit
+  # walks you through creating your account. Devices it finds on the Wi-Fi
+  # show up under Settings → Devices & services. This is Home Assistant on its
+  # own, without the Supervisor, so there are no add-ons. An integration whose
+  # Python packages aren't installed asks for them in its error message: add
+  # its name to extraComponents.
+  services.home-assistant = {
+    enable = true;
+    extraComponents = [
+      # what the first-run setup sets up
+      "default_config"
+      "met"
+      "esphome"
+      "radio_browser"
+      "google_translate"
+      "shopping_list"
+    ];
+    config = {
+      default_config = { };
+      # Where automations, scenes and scripts made on the page are saved.
+      "automation ui" = "!include automations.yaml";
+      "scene ui" = "!include scenes.yaml";
+      "script ui" = "!include scripts.yaml";
+    };
+  };
+  systemd.tmpfiles.settings.home-assistant =
+    lib.genAttrs
+      (map (name: "${config.services.home-assistant.configDir}/${name}.yaml") [
+        "automations"
+        "scenes"
+        "scripts"
+      ])
+      (_: {
+        f = {
+          mode = "0644";
+          user = "hass";
+          group = "hass";
+        };
+      });
 
   programs.firefox.enable = true;
   environment.systemPackages = with pkgs; [
