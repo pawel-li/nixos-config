@@ -78,7 +78,7 @@ Resume.
 | Coder | <http://coder.laptop.local> (or `laptop.local:3000`) | development machines on the laptop that you or an AI agent start on demand | the page asks you to create the admin account; see [Coder](#coder) |
 | Open WebUI | <http://openwebui.laptop.local> (or `laptop.local:8081`) | chat with AI models, on the laptop or online | the page asks you to create the admin account; see [Open WebUI](#open-webui) |
 | Home Assistant | <http://homeassistant.laptop.local> (or `laptop.local:8123`) | smart home: lights, sensors, automations | the page walks you through creating your account and your home's location; see [Home Assistant](#home-assistant) |
-| rmfakecloud | <http://rmfakecloud.laptop.local> (or `laptop.local:3003`) | the reMarkable tablet's cloud, on the laptop: syncs and backs up the tablet, takes new files | the first sign-in creates the admin account with the username and password you type; then set up the tablet, see [rmfakecloud](#rmfakecloud) |
+| rmfakecloud | <http://rmfakecloud.laptop.local> (or `laptop.local:3004`) | the reMarkable tablet's cloud, on the laptop: syncs and backs up the tablet, takes new files | the first sign-in creates the admin account with the username and password you type; then set up the tablet, see [rmfakecloud](#rmfakecloud) |
 
 Do the first-time steps right away: until Immich, Jellyfin, Navidrome, JobOps,
 Coder, Open WebUI, Home Assistant and rmfakecloud have an admin account,
@@ -235,7 +235,7 @@ mode, and turning that on wipes the tablet.
    ```
 
    When it asks for your cloud URL, type
-   `http://<the laptop's IP address>:3003`. The files on the tablet stay, and
+   `http://<the laptop's IP address>:3004`. The files on the tablet stay, and
    it uploads them to the laptop. On a Paper Pro, first do the extra step in the
    [proxy's README](https://github.com/ddvk/rmfakecloud-proxy#remarkable-paper-pro-and-remarkable-paper-pro-move),
    or the proxy is gone after a restart.
@@ -254,7 +254,7 @@ mode, and turning that on wipes the tablet.
   is still there; on a Paper Pro it's `installer-rmpro.sh`), then sign the
   tablet in again.
 - **The laptop's address changed:** on the tablet run
-  `./installer-rm12.sh setcloud http://<new address>:3003`.
+  `./installer-rm12.sh setcloud http://<new address>:3004`.
 - Its files live in `/var/lib/rmfakecloud`. Don't delete files there: the
   tablet deletes them too at its next sync.
 - Turning handwriting into text and sending email from the tablet need

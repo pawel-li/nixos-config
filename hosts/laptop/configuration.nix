@@ -14,7 +14,7 @@ let
     coder = 3000;
     openwebui = 8081;
     homeassistant = 8123;
-    rmfakecloud = 3003;
+    rmfakecloud = 3004; # Immich's machine learning has 3003
   };
   webAppHosts = map (name: "${name}.laptop.local") (lib.attrNames webApps);
   # rmapi for rmfakecloud (further down) instead of reMarkable's cloud. It
@@ -22,7 +22,7 @@ let
   # reMarkable's cloud.
   rmapiFakecloud = pkgs.writeShellScriptBin "rmapi-fakecloud" ''
     mkdir -p "$HOME/.config/rmapi"
-    export RMAPI_HOST=http://127.0.0.1:3003
+    export RMAPI_HOST=http://127.0.0.1:3004
     export RMAPI_CONFIG="$HOME/.config/rmapi/rmfakecloud.conf"
     exec ${pkgs.rmapi}/bin/rmapi "$@"
   '';
@@ -141,7 +141,7 @@ in
         3000 # Coder
         8081 # Open WebUI
         8123 # Home Assistant
-        3003 # rmfakecloud
+        3004 # rmfakecloud
       ];
       wifiUdpPorts = [
         1900 # Jellyfin, for TVs and players that look for media servers
@@ -245,7 +245,7 @@ in
                     {
                       title = "rmfakecloud";
                       url = "http://rmfakecloud.laptop.local";
-                      check-url = "http://127.0.0.1:3003/health";
+                      check-url = "http://127.0.0.1:3004/health";
                       icon = "di:remarkable.png";
                     }
                   ];
@@ -669,7 +669,7 @@ in
   # files and accounts live in /var/lib/rmfakecloud.
   services.rmfakecloud = {
     enable = true;
-    port = 3003; # Coder has 3000
+    port = 3004; # Coder has 3000, Immich's machine learning 3003
     # Where the tablet finds it: the proxy on the tablet answers at this
     # address and passes everything on to the laptop. Newer tablet software
     # takes only https without a port here.
