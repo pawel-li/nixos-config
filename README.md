@@ -2,9 +2,9 @@
 
 NixOS configuration for my laptop (GNOME, NixOS 26.05) that also serves Glance,
 Immich, Jellyfin, Navidrome, Paperless-ngx, JobOps, Reactive Resume, Coder,
-Open WebUI and Home Assistant to the home Wi-Fi and sends PDFs to a
-reMarkable tablet. The laptop follows the `main` branch: push a change here
-and the laptop applies it on its own within about 5 minutes.
+Open WebUI, Home Assistant and rmfakecloud to the home Wi-Fi and sends PDFs
+to a reMarkable tablet. The laptop follows the `main` branch: push a change
+here and the laptop applies it on its own within about 5 minutes.
 
 ```
 flake.nix                      entry point: nixosConfigurations.laptop
@@ -78,11 +78,12 @@ Resume.
 | Coder | <http://coder.laptop.local> (or `laptop.local:3000`) | development machines on the laptop that you or an AI agent start on demand | the page asks you to create the admin account; see [Coder](#coder) |
 | Open WebUI | <http://openwebui.laptop.local> (or `laptop.local:8081`) | chat with AI models, on the laptop or online | the page asks you to create the admin account; see [Open WebUI](#open-webui) |
 | Home Assistant | <http://homeassistant.laptop.local> (or `laptop.local:8123`) | smart home: lights, sensors, automations | the page walks you through creating your account and your home's location; see [Home Assistant](#home-assistant) |
+| rmfakecloud | <http://rmfakecloud.laptop.local> (or `laptop.local:3003`) | the reMarkable tablet's cloud, on the laptop: syncs and backs up the tablet, takes new files | the first sign-in creates the admin account with the username and password you type; then set up the tablet, see [rmfakecloud](#rmfakecloud) |
 
 Do the first-time steps right away: until Immich, Jellyfin, Navidrome, JobOps,
-Coder, Open WebUI and Home Assistant have an admin account, anyone on the
-Wi-Fi who opens the page can create it. Reactive Resume lets anyone on the
-Wi-Fi sign up until you turn sign-ups off.
+Coder, Open WebUI, Home Assistant and rmfakecloud have an admin account,
+anyone on the Wi-Fi who opens the page can create it. Reactive Resume lets
+anyone on the Wi-Fi sign up until you turn sign-ups off.
 
 - **Music and videos:** copy them into `~/Music` and `~/Videos`. Navidrome and
   Jellyfin see only those two folders, read-only. Navidrome picks up new files
@@ -183,7 +184,8 @@ Drop a PDF or EPUB into `~/reMarkable` on the laptop and it shows up on the
 tablet a moment later. Sent files move to `~/reMarkable/Sent`. It goes through
 reMarkable's free cloud sync, so you don't need a Connect subscription. Without
 Connect, files you haven't opened in 50 days drop out of the cloud, but they
-stay on the tablet.
+stay on the tablet. Once the tablet syncs with [rmfakecloud](#rmfakecloud)
+instead, the folder can send there; see the last step there.
 
 - **Sign in once:** in a terminal on the laptop run `rmapi`, open
   <https://my.remarkable.com/device/browser/connect>, log in and type the code
@@ -196,7 +198,67 @@ stay on the tablet.
 - **From the Mac or phone:** the free reMarkable apps
   (<https://remarkable.com/download>) take files too. With no app at all,
   connect the tablet by USB, turn on the USB web interface under Settings →
-  Storage and open <http://10.11.99.1>.
+  Storage and open <http://10.11.99.1>. With the tablet on rmfakecloud,
+  upload on rmfakecloud's page instead: the apps only know reMarkable's cloud.
+
+### rmfakecloud
+
+rmfakecloud is a cloud for the reMarkable tablet that runs on the laptop
+instead of on reMarkable's servers. The tablet syncs its notebooks and
+documents with it. Its page lists them, makes PDFs of them and takes new
+files. It needs no Connect subscription and keeps every file, however long
+ago you opened it. The tablet reaches it only on the home Wi-Fi: away from
+home the tablet keeps working and syncs when it's back.
+
+Until you install a small proxy on the tablet, the tablet keeps talking to
+reMarkable's servers. Installing it takes SSH access to the tablet. A
+reMarkable 1 or 2 has that already. A Paper Pro has it only in developer
+mode, and turning that on wipes the tablet.
+
+1. **Admin account:** open <http://rmfakecloud.laptop.local> and sign in with
+   the username and password you want. The first sign-in creates the account.
+2. **The laptop's address:** look up the laptop's IP address in GNOME
+   Settings → Wi-Fi → the gear icon next to your network. The tablet can't
+   use `laptop.local`. Set your router to always give the laptop this
+   address (often called a DHCP reservation).
+3. **Proxy on the tablet:** download `installer-rm12.sh` (reMarkable 1 or 2)
+   or `installer-rmpro.sh` (Paper Pro) from
+   <https://github.com/ddvk/rmfakecloud-proxy/releases>. Connect the tablet by
+   USB. Its SSH password is under Settings → Help → Copyrights and licenses.
+   Then, on a reMarkable 2 for example:
+
+   ```bash
+   scp installer-rm12.sh root@10.11.99.1:
+   ssh root@10.11.99.1
+   chmod +x installer-rm12.sh
+   ./installer-rm12.sh install
+   ```
+
+   When it asks for your cloud URL, type
+   `http://<the laptop's IP address>:3003`. The files on the tablet stay, and
+   it uploads them to the laptop. On a Paper Pro, first do the extra step in the
+   [proxy's README](https://github.com/ddvk/rmfakecloud-proxy#remarkable-paper-pro-and-remarkable-paper-pro-move),
+   or the proxy is gone after a restart.
+4. **Sign the tablet in:** on the tablet go to Settings → General → Account
+   and set up the account. For the code it asks for, open Connect on
+   rmfakecloud's page. To check, press Check sync under Settings → Storage.
+5. **The `~/reMarkable` folder:** to have it send to rmfakecloud too, run
+   `rmapi-fakecloud` in a terminal on the laptop. Type in a new code from
+   Connect (it still points you to my.remarkable.com, but that code won't
+   work here), then type `exit`. From then on the folder sends to
+   rmfakecloud. Files already waiting go within the hour, or right away after
+   `sudo systemctl restart remarkable-upload`.
+
+- **After a tablet software update** the proxy is gone and the tablet signs
+  out. Run `./installer-rm12.sh install` on the tablet again (the installer
+  is still there; on a Paper Pro it's `installer-rmpro.sh`), then sign the
+  tablet in again.
+- **The laptop's address changed:** on the tablet run
+  `./installer-rm12.sh setcloud http://<new address>:3003`.
+- Its files live in `/var/lib/rmfakecloud`. Don't delete files there: the
+  tablet deletes them too at its next sync.
+- Turning handwriting into text and sending email from the tablet need
+  accounts elsewhere (MyScript, a mail server) and aren't set up.
 
 ### Open WebUI
 

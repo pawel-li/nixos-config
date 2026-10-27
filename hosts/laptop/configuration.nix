@@ -14,8 +14,18 @@ let
     coder = 3000;
     openwebui = 8081;
     homeassistant = 8123;
+    rmfakecloud = 3003;
   };
   webAppHosts = map (name: "${name}.laptop.local") (lib.attrNames webApps);
+  # rmapi for rmfakecloud (further down) instead of reMarkable's cloud. It
+  # keeps its sign-in in a file of its own, so `rmapi` stays signed in to
+  # reMarkable's cloud.
+  rmapiFakecloud = pkgs.writeShellScriptBin "rmapi-fakecloud" ''
+    mkdir -p "$HOME/.config/rmapi"
+    export RMAPI_HOST=http://127.0.0.1:3003
+    export RMAPI_CONFIG="$HOME/.config/rmapi/rmfakecloud.conf"
+    exec ${pkgs.rmapi}/bin/rmapi "$@"
+  '';
 in
 {
   imports = [
@@ -131,6 +141,7 @@ in
         3000 # Coder
         8081 # Open WebUI
         8123 # Home Assistant
+        3003 # rmfakecloud
       ];
       wifiUdpPorts = [
         1900 # Jellyfin, for TVs and players that look for media servers
@@ -230,6 +241,12 @@ in
                       url = "http://homeassistant.laptop.local";
                       check-url = "http://127.0.0.1:8123/manifest.json";
                       icon = "di:home-assistant";
+                    }
+                    {
+                      title = "rmfakecloud";
+                      url = "http://rmfakecloud.laptop.local";
+                      check-url = "http://127.0.0.1:3003/health";
+                      icon = "di:remarkable.png";
                     }
                   ];
                 }
@@ -589,7 +606,9 @@ in
   # tablet a moment later, through reMarkable's free cloud sync (no Connect
   # subscription needed). Sent files move to ~/reMarkable/Sent. Sign in once
   # first: run `rmapi` in a terminal and enter the code from
-  # https://my.remarkable.com/device/browser/connect.
+  # https://my.remarkable.com/device/browser/connect. Once the tablet syncs
+  # with rmfakecloud below instead, sign in there with `rmapi-fakecloud` and
+  # files go to rmfakecloud from then on.
   systemd.services.remarkable-upload = {
     description = "Send files dropped into ~/reMarkable to the reMarkable tablet";
     wantedBy = [ "multi-user.target" ];
@@ -597,6 +616,7 @@ in
     after = [ "network-online.target" ];
     path = [
       pkgs.rmapi
+      rmapiFakecloud
       pkgs.inotify-tools
     ];
     serviceConfig = {
@@ -608,9 +628,13 @@ in
       shopt -s nullglob nocaseglob
       cd /home/pawel/reMarkable
       upload() {
+        send=rmapi
+        if [ -s "$HOME/.config/rmapi/rmfakecloud.conf" ]; then
+          send=rmapi-fakecloud
+        fi
         for f in *.pdf *.epub; do
           # Skips empty files: browsers create one before the download lands.
-          if [ -s "$f" ] && rmapi -ni put "./$f" /; then
+          if [ -s "$f" ] && $send -ni put "./$f" /; then
             mv -- "$f" Sent/
           fi
         done
@@ -636,6 +660,21 @@ in
         group = ":users";
       };
     });
+
+  # rmfakecloud: the reMarkable tablet's cloud, here on the laptop instead of
+  # on reMarkable's servers, at http://rmfakecloud.laptop.local. The first
+  # sign-in on the page creates the admin account with whatever username and
+  # password you type. The tablet needs a small proxy installed over SSH to
+  # sync here (see the README), and then syncs only on the home Wi-Fi. Its
+  # files and accounts live in /var/lib/rmfakecloud.
+  services.rmfakecloud = {
+    enable = true;
+    port = 3003; # Coder has 3000
+    # Where the tablet finds it: the proxy on the tablet answers at this
+    # address and passes everything on to the laptop. Newer tablet software
+    # takes only https without a port here.
+    storageUrl = "https://local.appspot.com";
+  };
 
   # Open WebUI: a chat page for AI models, at http://openwebui.laptop.local. The
   # first visit asks you to create the admin account; anyone who signs up
@@ -723,6 +762,7 @@ in
     gh
     git
     rmapi # reMarkable cloud from the terminal
+    rmapiFakecloud # the same for rmfakecloud
     vim
   ];
 
