@@ -1,5 +1,22 @@
 { config, lib, pkgs, ... }:
 
+let
+  # Each service's own address, http://<name>.laptop.local, and the port on
+  # the laptop that nginx passes it on to. The addresses with a port, such as
+  # http://laptop.local:2283, keep working too.
+  webApps = {
+    immich = 2283;
+    jellyfin = 8096;
+    navidrome = 4533;
+    paperless = 28981;
+    jobops = 3001;
+    resume = 3002; # Reactive Resume
+    coder = 3000;
+    openwebui = 8081;
+    homeassistant = 8123;
+  };
+  webAppHosts = map (name: "${name}.laptop.local") (lib.attrNames webApps);
+in
 {
   imports = [
     ./hardware-configuration.nix
@@ -123,12 +140,13 @@
     in
     # wl+ is any Wi-Fi interface. A service's openFirewall = true would open
     # its port on every network instead, so the services here leave it off.
-    # docker0 is Docker's network: Coder's workspaces reach Coder (3000) and
-    # its DNS server (53) through it.
+    # docker0 is Docker's network: Coder's workspaces reach Coder (through
+    # nginx on 80, or directly on 3000 for ones built before it moved to
+    # coder.laptop.local) and its DNS server (53) through it.
     ''
       iptables -w -A nixos-fw -i wl+ -p tcp -m multiport --dports ${portList wifiTcpPorts} -j nixos-fw-accept
       iptables -w -A nixos-fw -i wl+ -p udp -m multiport --dports ${portList wifiUdpPorts} -j nixos-fw-accept
-      iptables -w -A nixos-fw -i docker0 -p tcp -m multiport --dports 53,3000 -j nixos-fw-accept
+      iptables -w -A nixos-fw -i docker0 -p tcp -m multiport --dports 53,80,3000 -j nixos-fw-accept
       iptables -w -A nixos-fw -i docker0 -p udp --dport 53 -j nixos-fw-accept
     '';
 
@@ -161,55 +179,55 @@
                   sites = [
                     {
                       title = "Immich";
-                      url = "http://laptop.local:2283";
+                      url = "http://immich.laptop.local";
                       check-url = "http://127.0.0.1:2283/api/server/ping";
                       icon = "di:immich";
                     }
                     {
                       title = "Jellyfin";
-                      url = "http://laptop.local:8096";
+                      url = "http://jellyfin.laptop.local";
                       check-url = "http://127.0.0.1:8096/health";
                       icon = "di:jellyfin";
                     }
                     {
                       title = "Navidrome";
-                      url = "http://laptop.local:4533";
+                      url = "http://navidrome.laptop.local";
                       check-url = "http://127.0.0.1:4533/app/";
                       icon = "di:navidrome";
                     }
                     {
                       title = "Paperless";
-                      url = "http://laptop.local:28981";
+                      url = "http://paperless.laptop.local";
                       check-url = "http://127.0.0.1:28981/accounts/login/";
                       icon = "di:paperless-ngx";
                     }
                     {
                       title = "JobOps";
-                      url = "http://laptop.local:3001";
+                      url = "http://jobops.laptop.local";
                       check-url = "http://127.0.0.1:3001/health";
                       icon = "mdi:briefcase-search";
                     }
                     {
                       title = "Reactive Resume";
-                      url = "http://laptop.local:3002";
+                      url = "http://resume.laptop.local";
                       check-url = "http://127.0.0.1:3002/api/health";
                       icon = "di:reactive-resume";
                     }
                     {
                       title = "Coder";
-                      url = "http://laptop.local:3000";
+                      url = "http://coder.laptop.local";
                       check-url = "http://127.0.0.1:3000/healthz";
                       icon = "di:coder";
                     }
                     {
                       title = "Open WebUI";
-                      url = "http://laptop.local:8081";
+                      url = "http://openwebui.laptop.local";
                       check-url = "http://127.0.0.1:8081/health";
                       icon = "di:open-webui";
                     }
                     {
                       title = "Home Assistant";
-                      url = "http://laptop.local:8123";
+                      url = "http://homeassistant.laptop.local";
                       check-url = "http://127.0.0.1:8123/manifest.json";
                       icon = "di:home-assistant";
                     }
@@ -223,19 +241,87 @@
     };
   };
 
-  # Makes http://laptop.local/ show Glance. Also answers when the laptop is
+  # Makes http://laptop.local/ show Glance, and http://<name>.laptop.local each
+  # service in webApps at the top. Glance also answers when the laptop is
   # opened by its IP address or any other name.
   services.nginx = {
     enable = true;
     recommendedProxySettings = true;
-    virtualHosts.glance = {
-      default = true;
-      locations."/".proxyPass =
-        "http://127.0.0.1:${toString config.services.glance.settings.server.port}";
-    };
+    # Big uploads (videos, scans) and slow answers (AI models on the
+    # processor) need more than nginx's usual 10 MB and 60 seconds.
+    clientMaxBodySize = "0"; # no limit
+    proxyTimeout = "600s";
+    virtualHosts = {
+      glance = {
+        default = true;
+        locations."/".proxyPass =
+          "http://127.0.0.1:${toString config.services.glance.settings.server.port}";
+      };
+    }
+    // lib.mapAttrs' (
+      name: port:
+      lib.nameValuePair "${name}.laptop.local" {
+        locations."/" = {
+          proxyPass = "http://127.0.0.1:${toString port}";
+          proxyWebsockets = true;
+          # Passes uploads straight on instead of saving them to disk first.
+          extraConfig = "proxy_request_buffering off;";
+        };
+      }
+    ) webApps;
   };
 
-  # Immich: photos and videos, http://laptop.local:2283. The first visit asks
+  # Announces the names in webApps on the Wi-Fi next to laptop.local, at the
+  # laptop's current Wi-Fi address: avahi announces only the laptop's own
+  # name by itself. Checks the address every 30 seconds and announces again
+  # when it changes or a name dropped out.
+  services.avahi.publish.userServices = true; # lets this service announce them
+  systemd.services.mdns-names = {
+    description = "Announce the services' .local names on the Wi-Fi";
+    wantedBy = [ "multi-user.target" ];
+    requires = [ "avahi-daemon.service" ];
+    after = [ "avahi-daemon.service" ];
+    path = [
+      pkgs.avahi
+      pkgs.iproute2
+      pkgs.gawk
+    ];
+    serviceConfig = {
+      DynamicUser = true;
+      Restart = "always";
+    };
+    script = ''
+      pids=()
+      published=""
+      announcing() {
+        [ ''${#pids[@]} -gt 0 ] || return 1
+        for pid in "''${pids[@]}"; do kill -0 "$pid" 2>/dev/null || return 1; done
+      }
+      while true; do
+        address=$(ip -4 -o addr show scope global | awk '$2 ~ /^wl/ { sub("/.*", "", $4); print $4; exit }')
+        if [ "$address" != "$published" ] || ! announcing; then
+          [ ''${#pids[@]} -eq 0 ] || kill "''${pids[@]}" 2>/dev/null || true
+          wait || true
+          pids=()
+          published=""
+          if [ -n "$address" ]; then
+            for name in ${lib.concatStringsSep " " webAppHosts}; do
+              avahi-publish --address --no-reverse "$name" "$address" &
+              pids+=($!)
+            done
+            published=$address
+          fi
+        fi
+        sleep 30
+      done
+    '';
+  };
+  # Programs that look names up without avahi (Coder, and the Docker
+  # containers on the laptop's network, which get a copy of /etc/hosts) find
+  # the laptop's names here.
+  networking.hosts."127.0.0.2" = lib.mkAfter ([ "laptop.local" ] ++ webAppHosts);
+
+  # Immich: photos and videos, http://immich.laptop.local. The first visit asks
   # you to create the admin account; then install the Immich app on your phone
   # to back its photos up here (they're kept in /var/lib/immich). To include
   # the photos already in ~/Pictures, add /home/pawel/Pictures under
@@ -251,8 +337,8 @@
     BindReadOnlyPaths = [ "/home/pawel/Pictures" ];
   };
 
-  # Jellyfin: films, series and music, http://laptop.local:8096. The first visit
-  # walks you through creating the admin account and adding ~/Videos and
+  # Jellyfin: films, series and music, http://jellyfin.laptop.local. The first
+  # visit walks you through creating the admin account and adding ~/Videos and
   # ~/Music as libraries. Like Navidrome below, it runs as pawel and sees only
   # those two folders, read-only.
   services.jellyfin = {
@@ -279,7 +365,7 @@
     });
 
   # Paperless-ngx: scanned documents and PDFs, searchable, at
-  # http://laptop.local:28981. Create your login once with
+  # http://paperless.laptop.local. Create your login once with
   # `sudo paperless-manage createsuperuser`, then drop files onto the page.
   services.paperless = {
     enable = true;
@@ -294,7 +380,7 @@
   };
 
   # Navidrome music server. Put music in ~/Music, then open
-  # http://laptop.local:4533; the first visit asks you to create the admin
+  # http://navidrome.laptop.local; the first visit asks you to create the admin
   # account. It runs as pawel so it can read whatever you copy there, and it
   # sees only that folder, read-only.
   services.navidrome = {
@@ -310,7 +396,7 @@
   # the ~/Music folder above show through.
   systemd.services.navidrome.serviceConfig.ProtectHome = lib.mkForce "tmpfs";
 
-  # JobOps: job search and applications, http://laptop.local:3001. It searches
+  # JobOps: job search and applications, http://jobops.laptop.local. It searches
   # job boards, scores each offer against your CV, writes a CV for the ones you
   # pick and tracks where you applied. The first visit asks you to create your
   # account. It isn't packaged for NixOS, so it runs in Docker from the
@@ -335,7 +421,7 @@
       ];
       environmentFiles = [ "/var/lib/job-ops/env" ];
       # Its CVs can go into Reactive Resume, below.
-      environment.RXRESUME_URL = "http://laptop.local:3002";
+      environment.RXRESUME_URL = "http://resume.laptop.local";
     };
   };
   systemd.tmpfiles.settings.job-ops = {
@@ -343,7 +429,7 @@
     "/var/lib/job-ops/env".f.mode = "0600";
   };
 
-  # Reactive Resume: a resume builder, at http://laptop.local:3002. The first
+  # Reactive Resume: a resume builder, at http://resume.laptop.local. The first
   # visit asks you to create your account; then JobOps can write its CVs into
   # it (see the README). Like JobOps it runs in Docker on the laptop's network.
   # Its database is in the laptop's PostgreSQL, uploads go in
@@ -355,7 +441,7 @@
     networks = [ "host" ];
     environment = {
       PORT = "3002"; # Coder has 3000
-      APP_URL = "http://laptop.local:3002"; # signing in works only at this address
+      APP_URL = "http://resume.laptop.local"; # signing in works only at this address
     };
     volumes = [ "/var/lib/reactive-resume/data:/app/data" ];
     environmentFiles = [ "/var/lib/reactive-resume/env" ];
@@ -437,7 +523,7 @@
   };
 
   # Coder: development machines ("workspaces") that you or an AI agent on the
-  # home Wi-Fi start on demand, at http://laptop.local:3000. The first visit
+  # home Wi-Fi start on demand, at http://coder.laptop.local. The first visit
   # asks you to create the admin account. Its Docker template runs workspaces
   # in containers here on the laptop. Its cloud templates won't work: machines
   # in the cloud can't reach Coder on the home network.
@@ -446,7 +532,7 @@
     listenAddress = "[::]:3000"; # every address, IPv4 and IPv6
     # Where devices and workspaces reach Coder. Without it, Coder would open a
     # tunnel from a public address on the internet.
-    accessUrl = "http://laptop.local:3000";
+    accessUrl = "http://coder.laptop.local";
     # Coder's newest release (nixpkgs has an older one), with HashiCorp's own
     # build of the Terraform version it expects. Without one bundled, Coder
     # downloads Terraform itself, and 2.28 crashed doing so: its copy of
@@ -480,8 +566,6 @@
   };
   # Lets Coder's Docker template run workspaces on the laptop.
   users.users.coder.extraGroups = [ "docker" ];
-  # Coder looks names up without avahi, so it finds laptop.local here.
-  networking.hosts."127.0.0.2" = lib.mkAfter [ "laptop.local" ];
   # Workspace containers can't use avahi either. Docker points them at this
   # small DNS server, which answers laptop.local with the laptop's address on
   # Docker's network and passes every other name on to the laptop's own DNS
@@ -553,7 +637,7 @@
       };
     });
 
-  # Open WebUI: a chat page for AI models, at http://laptop.local:8081. The
+  # Open WebUI: a chat page for AI models, at http://openwebui.laptop.local. The
   # first visit asks you to create the admin account; anyone who signs up
   # after you waits for your approval. It runs models here on the laptop
   # through Ollama below, and online ones (OpenAI, OpenRouter, ...) once you
@@ -566,6 +650,7 @@
     networks = [ "host" ];
     environment = {
       PORT = "8081"; # Glance has 8080
+      WEBUI_URL = "http://openwebui.laptop.local";
       OLLAMA_BASE_URL = "http://127.0.0.1:11434";
       # Keeps the sign-in key with the data, so a restart doesn't sign you out.
       WEBUI_SECRET_KEY_FILE = "/app/backend/data/.webui_secret_key";
@@ -582,12 +667,12 @@
   # (3-8B) work best.
   services.ollama.enable = true;
 
-  # Home Assistant: smart home, at http://laptop.local:8123. The first visit
-  # walks you through creating your account. Devices it finds on the Wi-Fi
-  # show up under Settings → Devices & services. This is Home Assistant on its
-  # own, without the Supervisor, so there are no add-ons. An integration whose
-  # Python packages aren't installed asks for them in its error message: add
-  # its name to extraComponents.
+  # Home Assistant: smart home, at http://homeassistant.laptop.local. The
+  # first visit walks you through creating your account. Devices it finds on
+  # the Wi-Fi show up under Settings → Devices & services. This is Home
+  # Assistant on its own, without the Supervisor, so there are no add-ons.
+  # An integration whose Python packages aren't installed asks for them in
+  # its error message: add its name to extraComponents.
   services.home-assistant = {
     enable = true;
     extraComponents = [
@@ -601,6 +686,15 @@
     ];
     config = {
       default_config = { };
+      homeassistant.internal_url = "http://homeassistant.laptop.local";
+      # Takes requests from nginx at homeassistant.laptop.local.
+      http = {
+        use_x_forwarded_for = true;
+        trusted_proxies = [
+          "127.0.0.1"
+          "::1"
+        ];
+      };
       # Where automations, scenes and scripts made on the page are saved.
       "automation ui" = "!include automations.yaml";
       "scene ui" = "!include scenes.yaml";

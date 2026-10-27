@@ -59,18 +59,25 @@ They answer nothing else: not the internet, not a device on a network cable.
 If the laptop ever joins another Wi-Fi network, they'd answer there too, so
 it should stay at home.
 
+Each service has its own name, such as <http://jobops.laptop.local>, which the
+laptop announces on the Wi-Fi. Macs, iPhones and iPads find these names; so
+does the laptop itself. Android phones, Windows PCs and other Linux machines
+often find only `laptop.local`: on those, use the address with the port, such
+as `http://laptop.local:3001`, which works everywhere except for Reactive
+Resume.
+
 | Service | Address | What for | First time |
 | ------- | ------- | -------- | ---------- |
 | Glance | <http://laptop.local> (or `:8080`) | start page: links to the others and shows if they're up | nothing to do |
-| Immich | <http://laptop.local:2283> | photos and videos, backed up from the phone | the page asks you to create the admin account; then install the Immich app on the phone and sign in with server `http://laptop.local:2283` |
-| Jellyfin | <http://laptop.local:8096> | films, series, music | the page walks you through creating the admin account; add `/home/pawel/Videos` and `/home/pawel/Music` as libraries |
-| Navidrome | <http://laptop.local:4533> | music | the page asks you to create the admin account |
-| Paperless-ngx | <http://laptop.local:28981> | scanned documents and PDFs, searchable (Polish and English text) | on the laptop run `sudo paperless-manage createsuperuser` once and pick a username and password |
-| JobOps | <http://laptop.local:3001> | job search: finds offers, scores them against your CV, writes a CV for each one and tracks your applications | the page asks you to create your account, pick an AI provider and upload your CV; see [JobOps](#jobops) |
-| Reactive Resume | <http://laptop.local:3002> | resume builder; JobOps can write its CVs into it | the page asks you to create your account; see [Reactive Resume](#reactive-resume) |
-| Coder | <http://laptop.local:3000> | development machines on the laptop that you or an AI agent start on demand | the page asks you to create the admin account; see [Coder](#coder) |
-| Open WebUI | <http://laptop.local:8081> | chat with AI models, on the laptop or online | the page asks you to create the admin account; see [Open WebUI](#open-webui) |
-| Home Assistant | <http://laptop.local:8123> | smart home: lights, sensors, automations | the page walks you through creating your account and your home's location; see [Home Assistant](#home-assistant) |
+| Immich | <http://immich.laptop.local> (or `laptop.local:2283`) | photos and videos, backed up from the phone | the page asks you to create the admin account; then install the Immich app on the phone and sign in with server `http://immich.laptop.local` (or `http://laptop.local:2283`) |
+| Jellyfin | <http://jellyfin.laptop.local> (or `laptop.local:8096`) | films, series, music | the page walks you through creating the admin account; add `/home/pawel/Videos` and `/home/pawel/Music` as libraries |
+| Navidrome | <http://navidrome.laptop.local> (or `laptop.local:4533`) | music | the page asks you to create the admin account |
+| Paperless-ngx | <http://paperless.laptop.local> (or `laptop.local:28981`) | scanned documents and PDFs, searchable (Polish and English text) | on the laptop run `sudo paperless-manage createsuperuser` once and pick a username and password |
+| JobOps | <http://jobops.laptop.local> (or `laptop.local:3001`) | job search: finds offers, scores them against your CV, writes a CV for each one and tracks your applications | the page asks you to create your account, pick an AI provider and upload your CV; see [JobOps](#jobops) |
+| Reactive Resume | <http://resume.laptop.local> (only this one) | resume builder; JobOps can write its CVs into it | the page asks you to create your account; see [Reactive Resume](#reactive-resume) |
+| Coder | <http://coder.laptop.local> (or `laptop.local:3000`) | development machines on the laptop that you or an AI agent start on demand | the page asks you to create the admin account; see [Coder](#coder) |
+| Open WebUI | <http://openwebui.laptop.local> (or `laptop.local:8081`) | chat with AI models, on the laptop or online | the page asks you to create the admin account; see [Open WebUI](#open-webui) |
+| Home Assistant | <http://homeassistant.laptop.local> (or `laptop.local:8123`) | smart home: lights, sensors, automations | the page walks you through creating your account and your home's location; see [Home Assistant](#home-assistant) |
 
 Do the first-time steps right away: until Immich, Jellyfin, Navidrome, JobOps,
 Coder, Open WebUI and Home Assistant have an admin account, anyone on the
@@ -112,10 +119,12 @@ newest release every Monday. Its database and the CVs it writes live in
   restart. Then, on the laptop itself, open <http://localhost:3001>, go to
   Tracking Inbox and connect Gmail. Google takes a plain-http address only for
   `localhost`, so this one step has to happen on the laptop.
-- **Reactive Resume:** JobOps already points at the one on the laptop. In
-  Reactive Resume create an API key (your name at the bottom of the sidebar →
-  Settings → AI & developer → API keys → New key), then paste it into JobOps'
-  Reactive Resume settings.
+- **Reactive Resume:** JobOps already points at the one on the laptop, at
+  `http://resume.laptop.local`. In Reactive Resume create an API key (your
+  name at the bottom of the sidebar → Settings → AI & developer → API keys →
+  New key), then paste it into JobOps' Reactive Resume settings. Leave the
+  address field there empty, or put in `http://resume.laptop.local`: an
+  address typed there wins over the one the laptop gives JobOps.
 
 ### Reactive Resume
 
@@ -129,9 +138,14 @@ then run `sudo systemctl restart docker-reactive-resume`.
 - **Turn sign-ups off** once your account exists: add
   `FLAG_DISABLE_SIGNUPS=true` to the file and restart. Your account keeps
   working.
-- **Open it only at <http://laptop.local:3002>.** Signing in works at that
-  exact address only, so a device that can't open `laptop.local` can't sign
-  in by IP address.
+- **Open it only at <http://resume.laptop.local>.** Signing in works at that
+  exact address only (anywhere else it says "Invalid origin"), so it needs a
+  device that finds the `.laptop.local` names, such as the Mac or an iPhone.
+- **JobOps says Reactive Resume is unavailable:** on the laptop, check
+  `curl http://resume.laptop.local/api/health`. It says `healthy` once
+  Reactive Resume is up; its first start downloads 1.4 GB and takes a few
+  minutes. If it doesn't answer, `journalctl -u reactive-resume-setup -u docker-reactive-resume`
+  says why.
 - It sends a verification email, which you don't need: the app works without
   it, and with no mail server set up the link only goes to the log
   (`journalctl -u docker-reactive-resume | grep verify-email`).
@@ -146,11 +160,13 @@ for an AI agent on the home Wi-Fi.
   won't work: a machine in the cloud has to reach Coder, and Coder answers
   only on the home Wi-Fi.
 - **Agents:** on the Mac or the laptop, sign in once with
-  `coder login http://laptop.local:3000`. Then the agent can use
+  `coder login http://coder.laptop.local`. Then the agent can use
   `coder create`, `coder ssh` and the rest. For Claude Code,
   `claude mcp add coder -- coder exp mcp server` gives it tools to create
   workspaces and run commands in them. Agents running in the cloud (Claude
   Code on the web, say) can't reach Coder.
+- **Workspaces made before Coder moved to `coder.laptop.local`** keep the old
+  address until you restart them (Stop, then Start, on the workspace's page).
 - **Locked out:** set a new password from a terminal on the laptop (it asks
   for it twice):
   `sudo -u coder -H coder reset-password <username> --postgres-url 'user=coder database=coder host=/run/postgresql sslmode=disable'`.
@@ -202,8 +218,8 @@ Panel → Users.
 
 Home Assistant finds many devices on the Wi-Fi by itself; they show up under
 Settings → Devices & services. Install the Home Assistant app on your phone
-and sign in with `http://laptop.local:8123`. Like everything here it works
-only at home.
+and sign in with `http://homeassistant.laptop.local` (on an iPhone) or
+`http://laptop.local:8123`. Like everything here it works only at home.
 
 - **No add-ons:** this is Home Assistant on its own, without the Supervisor
   that add-ons need. Integrations work as usual.
@@ -217,7 +233,9 @@ only at home.
 
 Every service in `hosts/laptop/configuration.nix` is meant for the home
 Wi-Fi. When you add one, make it listen on every address, add its port to
-`wifiTcpPorts` near the top of that file, then add it to the Glance page.
+`wifiTcpPorts` near the top of that file and its name and port to `webApps`
+at the very top (that gives it `http://<name>.laptop.local`), then add it to
+the Glance page.
 Leave its `openFirewall` off: that would open the port on every network, cable
 and IPv6 included. Anything not in the list stays blocked by the firewall.
 Docker containers get the same treatment only with `networks = [ "host" ]`,
