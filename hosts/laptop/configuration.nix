@@ -110,6 +110,7 @@
         4533 # Navidrome
         28981 # Paperless
         3001 # JobOps
+        3002 # Reactive Resume
         3000 # Coder
       ];
       wifiUdpPorts = [
@@ -185,6 +186,12 @@
                       url = "http://laptop.local:3001";
                       check-url = "http://127.0.0.1:3001/health";
                       icon = "mdi:briefcase-search";
+                    }
+                    {
+                      title = "Reactive Resume";
+                      url = "http://laptop.local:3002";
+                      check-url = "http://127.0.0.1:3002/api/health";
+                      icon = "di:reactive-resume";
                     }
                     {
                       title = "Coder";
@@ -313,26 +320,105 @@
         "/var/lib/job-ops/tectonic-cache:/root/.cache/Tectonic"
       ];
       environmentFiles = [ "/var/lib/job-ops/env" ];
+      # Its CVs can go into Reactive Resume, below.
+      environment.RXRESUME_URL = "http://laptop.local:3002";
     };
   };
   systemd.tmpfiles.settings.job-ops = {
     "/var/lib/job-ops".d.mode = "0700";
     "/var/lib/job-ops/env".f.mode = "0600";
   };
-  # Moves JobOps to its latest release once a week. It restarts only when
-  # there is a new one.
-  systemd.services.job-ops-update = {
-    description = "Update JobOps to its latest release";
+
+  # Reactive Resume: a resume builder, at http://laptop.local:3002. The first
+  # visit asks you to create your account; then JobOps can write its CVs into
+  # it (see the README). Like JobOps it runs in Docker on the laptop's network.
+  # Its database is in the laptop's PostgreSQL, uploads go in
+  # /var/lib/reactive-resume/data, and the secrets it needs in
+  # /var/lib/reactive-resume/env, which the laptop writes itself the first
+  # time, so they never end up in this repo.
+  virtualisation.oci-containers.containers.reactive-resume = {
+    image = "ghcr.io/reactive-resume/reactive-resume:v6"; # the newest 6.x
+    networks = [ "host" ];
+    environment = {
+      PORT = "3002"; # Coder has 3000
+      APP_URL = "http://laptop.local:3002"; # signing in works only at this address
+    };
+    volumes = [ "/var/lib/reactive-resume/data:/app/data" ];
+    environmentFiles = [ "/var/lib/reactive-resume/env" ];
+  };
+  systemd.tmpfiles.settings.reactive-resume = {
+    "/var/lib/reactive-resume".d.mode = "0700";
+    # The app runs as uid 1000 inside the container.
+    "/var/lib/reactive-resume/data".d = {
+      mode = "0700";
+      user = "1000";
+      group = "1000";
+    };
+  };
+  services.postgresql = {
+    ensureDatabases = [ "reactive_resume" ];
+    ensureUsers = [
+      {
+        name = "reactive_resume";
+        ensureDBOwnership = true;
+      }
+    ];
+  };
+  # Writes the secrets the first time and gives the database user the password
+  # from them: the container reaches PostgreSQL at 127.0.0.1, which asks for
+  # one.
+  systemd.services.reactive-resume-setup = {
+    description = "Set up Reactive Resume's secrets and database password";
+    requiredBy = [ "docker-reactive-resume.service" ];
+    before = [ "docker-reactive-resume.service" ];
+    requires = [ "postgresql.target" ];
+    after = [ "postgresql.target" ];
+    path = [
+      config.services.postgresql.package
+      pkgs.openssl
+      pkgs.util-linux
+    ];
+    serviceConfig = {
+      Type = "oneshot";
+      RemainAfterExit = true;
+    };
+    script = ''
+      env=/var/lib/reactive-resume/env
+      if [ ! -s $env ]; then
+        umask 077
+        printf '%s\n' \
+          "DATABASE_URL=postgresql://reactive_resume:$(openssl rand -hex 32)@127.0.0.1:5432/reactive_resume" \
+          "AUTH_SECRET=$(openssl rand -hex 32)" \
+          "ENCRYPTION_SECRET=$(openssl rand -hex 32)" > $env
+      fi
+      password=$(sed -n 's|^DATABASE_URL=postgresql://reactive_resume:\([^@]*\)@.*|\1|p' $env)
+      echo "ALTER ROLE reactive_resume PASSWORD '$password'" |
+        runuser -u postgres -- psql -v ON_ERROR_STOP=1 -q
+    '';
+  };
+
+  # Moves each container to the newest release its image tag points to, once a
+  # week. A container restarts only when its image changed.
+  systemd.services.container-updates = {
+    description = "Update the Docker containers to their latest releases";
     startAt = "weekly";
     path = [ config.virtualisation.docker.package ];
     serviceConfig.Type = "oneshot";
     script = ''
-      image=${config.virtualisation.oci-containers.containers.job-ops.image}
-      old=$(docker image inspect --format '{{.Id}}' "$image" || true)
-      docker pull --quiet "$image"
-      if [ "$(docker image inspect --format '{{.Id}}' "$image")" != "$old" ]; then
-        systemctl restart docker-job-ops.service
-      fi
+      update() {
+        old=$(docker image inspect --format '{{.Id}}' "$1" || true)
+        docker pull --quiet "$1" || return 1
+        if [ "$(docker image inspect --format '{{.Id}}' "$1")" != "$old" ]; then
+          systemctl restart "$2"
+        fi
+      }
+      failed=0
+    ''
+    + lib.concatMapStrings (c: ''
+      update ${c.image} ${c.serviceName}.service || failed=1
+    '') (lib.attrValues config.virtualisation.oci-containers.containers)
+    + ''
+      exit $failed
     '';
   };
 
@@ -347,11 +433,31 @@
     # Where devices and workspaces reach Coder. Without it, Coder would open a
     # tunnel from a public address on the internet.
     accessUrl = "http://laptop.local:3000";
-    # Without Terraform bundled, Coder downloads the version it's tested with
-    # on first use. The bundled one is newer than Coder supports, and NixOS
-    # doesn't prebuild it (its licence isn't free), so the laptop would
-    # compile it itself after nixpkgs updates.
-    package = pkgs.coder.override { terraform = pkgs.emptyDirectory; };
+    # Coder's newest release (nixpkgs has an older one), with HashiCorp's own
+    # build of the Terraform version it expects. Without one bundled, Coder
+    # downloads Terraform itself, and 2.28 crashed doing so: its copy of
+    # HashiCorp's signing key had expired. nixpkgs' Terraform isn't an option
+    # either: its licence isn't free, so NixOS doesn't prebuild it and the
+    # laptop would compile it. To update, change a version and set its hash to
+    # "": the failed build prints the right one. Coder's
+    # provisioner/terraform/install.go names the Terraform it wants.
+    package =
+      let
+        terraform = pkgs.runCommand "terraform-1.16.7" {
+          src = pkgs.fetchurl {
+            url = "https://releases.hashicorp.com/terraform/1.16.7/terraform_1.16.7_linux_amd64.zip";
+            hash = "sha256-VFTvz3/IfwwhExEbmlxxgvDKHG8PI6HhEKUHcKj+Rzs=";
+          };
+          nativeBuildInputs = [ pkgs.unzip ];
+        } "unzip $src terraform && install -D terraform $out/bin/terraform";
+      in
+      (pkgs.coder.override { inherit terraform; }).overrideAttrs (final: prev: {
+        version = "2.38.3";
+        src = pkgs.fetchurl {
+          url = "https://github.com/coder/coder/releases/download/v${final.version}/coder_${final.version}_linux_amd64.tar.gz";
+          hash = "sha256-vwS2Qot2vgdqb+3ASdpGshydqsq7ZMLVmrXXDiw78dU=";
+        };
+      });
   };
   # Its module doesn't wait for the database it sets up.
   systemd.services.coder = {

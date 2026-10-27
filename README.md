@@ -67,11 +67,13 @@ it should stay at home.
 | Navidrome | <http://laptop.local:4533> | music | the page asks you to create the admin account |
 | Paperless-ngx | <http://laptop.local:28981> | scanned documents and PDFs, searchable (Polish and English text) | on the laptop run `sudo paperless-manage createsuperuser` once and pick a username and password |
 | JobOps | <http://laptop.local:3001> | job search: finds offers, scores them against your CV, writes a CV for each one and tracks your applications | the page asks you to create your account, pick an AI provider and upload your CV; see [JobOps](#jobops) |
+| Reactive Resume | <http://laptop.local:3002> | resume builder; JobOps can write its CVs into it | the page asks you to create your account; see [Reactive Resume](#reactive-resume) |
 | Coder | <http://laptop.local:3000> | development machines on the laptop that you or an AI agent start on demand | the page asks you to create the admin account; see [Coder](#coder) |
 
 Do the first-time steps right away: until Immich, Jellyfin, Navidrome, JobOps
 and Coder have an admin account, anyone on the Wi-Fi who opens the page can
-create it.
+create it. Reactive Resume lets anyone on the Wi-Fi sign up until you turn
+sign-ups off.
 
 - **Music and videos:** copy them into `~/Music` and `~/Videos`. Navidrome and
   Jellyfin see only those two folders, read-only. Navidrome picks up new files
@@ -89,7 +91,7 @@ create it.
 
 ### JobOps
 
-JobOps runs in Docker from the project's own image and updates itself to the
+JobOps runs in Docker from the project's own image and moves to its
 newest release every Monday. Its database and the CVs it writes live in
 `/var/lib/job-ops/data`. Settings that can't be made on the page go in
 `/var/lib/job-ops/env`, one `NAME=value` per line: edit it with
@@ -108,6 +110,29 @@ newest release every Monday. Its database and the CVs it writes live in
   restart. Then, on the laptop itself, open <http://localhost:3001>, go to
   Tracking Inbox and connect Gmail. Google takes a plain-http address only for
   `localhost`, so this one step has to happen on the laptop.
+- **Reactive Resume:** JobOps already points at the one on the laptop. In
+  Reactive Resume create an API key (your name at the bottom of the sidebar →
+  Settings → AI & developer → API keys → New key), then paste it into JobOps'
+  Reactive Resume settings.
+
+### Reactive Resume
+
+Reactive Resume runs in Docker and moves to the newest 6.x release every
+Monday. Its database is in the laptop's PostgreSQL and uploads live in
+`/var/lib/reactive-resume/data`. The laptop wrote its secrets (database
+password, sign-in keys) to `/var/lib/reactive-resume/env` the first time, and
+settings go there too: edit it with `sudoedit /var/lib/reactive-resume/env`,
+then run `sudo systemctl restart docker-reactive-resume`.
+
+- **Turn sign-ups off** once your account exists: add
+  `FLAG_DISABLE_SIGNUPS=true` to the file and restart. Your account keeps
+  working.
+- **Open it only at <http://laptop.local:3002>.** Signing in works at that
+  exact address only, so a device that can't open `laptop.local` can't sign
+  in by IP address.
+- It sends a verification email, which you don't need: the app works without
+  it, and with no mail server set up the link only goes to the log
+  (`journalctl -u docker-reactive-resume | grep verify-email`).
 
 ### Coder
 
@@ -124,8 +149,15 @@ for an AI agent on the home Wi-Fi.
   `claude mcp add coder -- coder exp mcp server` gives it tools to create
   workspaces and run commands in them. Agents running in the cloud (Claude
   Code on the web, say) can't reach Coder.
-- Coder downloads Terraform, which it uses to build workspaces, the first time
-  it needs it.
+- **Locked out:** set a new password from a terminal on the laptop (it asks
+  for it twice):
+  `sudo -u coder -H coder reset-password <username> --postgres-url 'user=coder database=coder host=/run/postgresql sslmode=disable'`.
+  To see the usernames:
+  `sudo -u coder psql -d coder -c "SELECT username, email, created_at FROM users WHERE NOT deleted;"`.
+- **Version:** Coder is pinned to a release in `configuration.nix`, newer than
+  the one nixpkgs has, together with the Terraform it builds workspaces with.
+  The comment there says how to move it to a newer release. The weekly
+  nixpkgs update doesn't touch it.
 
 ### reMarkable
 
