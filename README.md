@@ -77,7 +77,7 @@ Resume.
 | Reactive Resume | <http://resume.laptop.local> (only this one) | resume builder; JobOps can write its CVs into it | the page asks you to create your account; see [Reactive Resume](#reactive-resume) |
 | Coder | <http://coder.laptop.local> (or `laptop.local:3000`) | development machines on the laptop that you or an AI agent start on demand | the page asks you to create the admin account; see [Coder](#coder) |
 | Open WebUI | <http://openwebui.laptop.local> (or `laptop.local:8081`) | chat with AI models, on the laptop or online | the page asks you to create the admin account; see [Open WebUI](#open-webui) |
-| Home Assistant | <http://homeassistant.laptop.local> (or `laptop.local:8123`) | smart home: lights, sensors, automations | the page walks you through creating your account and your home's location; see [Home Assistant](#home-assistant) |
+| Home Assistant | <http://homeassistant.laptop.local> (or `laptop.local:8123`) | smart home: lights, sensors, the vacuum, automations | the page walks you through creating your account and your home's location; see [Home Assistant](#home-assistant) |
 | rmfakecloud | <http://rmfakecloud.laptop.local> (or `laptop.local:3004`) | the reMarkable tablet's cloud, on the laptop: syncs and backs up the tablet, takes new files | the first sign-in creates the admin account with the username and password you type; then set up the tablet, see [rmfakecloud](#rmfakecloud) |
 
 Do the first-time steps right away: until Immich, Jellyfin, Navidrome, JobOps,
@@ -290,6 +290,47 @@ and sign in with `http://homeassistant.laptop.local` (on an iPhone) or
   `/integrations/hue`) to `extraComponents` in `configuration.nix`.
 - Automations, scenes and scripts you make on the page are kept in
   `/var/lib/hass`; `configuration.yaml` comes from `configuration.nix`.
+
+#### The Deebot vacuum, from a chat in Open WebUI
+
+Type "posprzątaj łazienkę" in Open WebUI and the Ecovacs Deebot cleans only
+the bathroom. The AI model does it through Home Assistant's MCP server, which
+gives it Home Assistant's own tools, "clean an area" among them. The laptop
+has everything this needs installed; set it up once on the pages:
+
+1. **Add the Deebot.** In Home Assistant, Settings → Devices & services →
+   Add integration → Ecovacs, and sign in with the email and password of
+   the Ecovacs app. The Deebot needs to have mapped the home and have its
+   rooms in the Ecovacs app.
+2. **Give the rooms to Home Assistant.** Under Settings → Areas, labels &
+   zones, create an area for each room the Deebot knows: Łazienka, Kuchnia,
+   Salon, … For each one, add the other forms of the name as aliases
+   (łazienkę, łazience) so the model's wording still finds it. Then open
+   the Deebot's vacuum entity, click the cog, and under "Map vacuum segments
+   to areas" pick the area for each of its rooms. If you redo the map or
+   rename rooms in the Ecovacs app, Home Assistant opens a repair to redo
+   this.
+   To check it, run the `vacuum.clean_area` action under Developer tools →
+   Actions with the area Łazienka: the Deebot should set off for the
+   bathroom.
+3. **Turn on the MCP server.** Settings → Devices & services → Add
+   integration → Model Context Protocol Server, with the Assist API. The
+   chat can control what's exposed to Assist (Settings → Voice assistants →
+   Expose): vacuums, lights and switches are, by default; untick what the
+   chat should leave alone. Then click your name at the bottom left →
+   Security → Long-lived access tokens → Create token, call it Open WebUI and
+   copy it.
+4. **Connect Open WebUI.** Admin Panel → Settings → External Tools
+   (Integrations in some versions) → +. Type: MCP (Streamable HTTP), URL:
+   `http://127.0.0.1:8123/api/mcp`, Auth: Bearer, Key: the token. Save.
+5. **Let the model use it.** Under Workspace → Models, edit the model you
+   chat with and tick Home Assistant under Tools, so it's on in every chat
+   (or turn it on in one chat under + → Tools). The model must be able to
+   call tools: `qwen3:8b` on the laptop does, but on the processor it takes
+   up to a minute to answer; an online model answers in seconds.
+
+The token is kept in Open WebUI's settings, which only its admin sees. To
+take the chat's access away, delete the token in Home Assistant.
 
 ### Adding a service
 

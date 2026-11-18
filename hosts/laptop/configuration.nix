@@ -712,6 +712,13 @@ in
   # Assistant on its own, without the Supervisor, so there are no add-ons.
   # An integration whose Python packages aren't installed asks for them in
   # its error message: add its name to extraComponents.
+  #
+  # The Ecovacs Deebot vacuum cleans single rooms on request, and Open WebUI
+  # can ask it to: "posprzątaj łazienkę" in a chat makes the AI model call Home
+  # Assistant's "clean an area" tool through its MCP server (mcp_server below,
+  # at http://127.0.0.1:8123/api/mcp). Signing in to Ecovacs, matching the
+  # Deebot's rooms to Home Assistant's areas and connecting Open WebUI are
+  # done on the pages, once; the README has the steps.
   services.home-assistant = {
     enable = true;
     extraComponents = [
@@ -722,6 +729,10 @@ in
       "radio_browser"
       "google_translate"
       "shopping_list"
+      # Ecovacs Deebot robot vacuums, through Ecovacs' cloud
+      "ecovacs"
+      # Lets AI chats outside Home Assistant (Open WebUI) control the home
+      "mcp_server"
     ];
     config = {
       default_config = { };
